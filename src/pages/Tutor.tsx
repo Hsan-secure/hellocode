@@ -30,7 +30,7 @@ const Tutor = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Navbar xp={850} level={3} isLoggedIn={true} />
+      <Navbar />
       
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="grid lg:grid-cols-[1fr,450px] gap-8">

@@ -14,7 +14,138 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      game_sessions: {
+        Row: {
+          completed_at: string
+          correct_answers: number
+          hints_used: number
+          id: string
+          level_id: number
+          score: number
+          total_questions: number
+          user_id: string
+          xp_earned: number
+        }
+        Insert: {
+          completed_at?: string
+          correct_answers?: number
+          hints_used?: number
+          id?: string
+          level_id: number
+          score?: number
+          total_questions?: number
+          user_id: string
+          xp_earned?: number
+        }
+        Update: {
+          completed_at?: string
+          correct_answers?: number
+          hints_used?: number
+          id?: string
+          level_id?: number
+          score?: number
+          total_questions?: number
+          user_id?: string
+          xp_earned?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          current_level: number
+          id: string
+          last_activity_date: string | null
+          streak_days: number
+          total_xp: number
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          current_level?: number
+          id?: string
+          last_activity_date?: string | null
+          streak_days?: number
+          total_xp?: number
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          current_level?: number
+          id?: string
+          last_activity_date?: string | null
+          streak_days?: number
+          total_xp?: number
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      user_badges: {
+        Row: {
+          badge_id: string
+          earned_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          badge_id: string
+          earned_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          badge_id?: string
+          earned_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_level_progress: {
+        Row: {
+          attempts: number
+          best_score: number | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          is_completed: boolean
+          level_id: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          best_score?: number | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          level_id: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          best_score?: number | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          level_id?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,62 +1,113 @@
+import { useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Zap, 
   Trophy, 
   Target, 
   Flame, 
-  Calendar,
   TrendingUp,
   Award,
-  Play
+  Play,
+  Sparkles
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { useUserProfile, useUserLevelProgress, useUserBadges, useGameSessions } from '@/hooks/useUserProgress';
+import { levels } from '@/data/levels';
+import { badges as allBadges } from '@/data/levels';
 import { LANGUAGE_LEVELS } from '@/types/game';
 
 const Dashboard = () => {
-  // Mock user data - in real app, comes from backend
-  const userData = {
-    name: 'Alex',
-    xp: 2850,
-    level: 5,
-    streak: 7,
-    completedLevels: 4,
-    totalLevels: 26,
-    weakTopics: ['CSS Grid', 'JavaScript Closures'],
-    strongTopics: ['HTML Tags', 'CSS Flexbox'],
-    badges: [
-      { id: 'first-blood', name: 'First Blood', icon: '🎯' },
-      { id: 'streak-7', name: 'Week Warrior', icon: '🔥' },
-      { id: 'perfect-score', name: 'Perfect Score', icon: '💯' },
-    ],
-    recentActivity: [
-      { level: 3, title: 'Semantic HTML', score: 85, date: 'Today' },
-      { level: 2, title: 'HTML Forms', score: 92, date: 'Yesterday' },
-      { level: 1, title: 'HTML Tags', score: 100, date: '2 days ago' },
-    ],
-    languageProgress: [
-      { language: 'html', completed: 3, total: 4, name: 'HTML', color: 'from-orange-500 to-red-500' },
-      { language: 'css', completed: 1, total: 4, name: 'CSS', color: 'from-blue-500 to-cyan-500' },
-      { language: 'javascript', completed: 0, total: 3, name: 'JavaScript', color: 'from-yellow-500 to-amber-500' },
-    ],
-  };
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { data: profile, isLoading: profileLoading } = useUserProfile();
+  const { data: levelProgress, isLoading: progressLoading } = useUserLevelProgress();
+  const { data: userBadges, isLoading: badgesLoading } = useUserBadges();
+  const { data: gameSessions, isLoading: sessionsLoading } = useGameSessions();
+
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+    }
+  }, [user, authLoading, navigate]);
+
+  const isLoading = authLoading || profileLoading || progressLoading || badgesLoading || sessionsLoading;
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
+        <Sparkles className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  const completedLevelIds = levelProgress?.filter(p => p.is_completed).map(p => p.level_id) || [];
+  const totalCompleted = completedLevelIds.length;
 
   const xpToNextLevel = 1000;
-  const currentLevelXP = userData.xp % xpToNextLevel;
+  const currentLevelXP = (profile?.total_xp || 0) % xpToNextLevel;
   const progress = (currentLevelXP / xpToNextLevel) * 100;
+
+  // Get next level to play
+  const nextLevel = levels.find(l => !completedLevelIds.includes(l.id)) || levels[0];
+
+  // Calculate language progress
+  const languageProgressData = Object.entries(LANGUAGE_LEVELS).slice(0, 3).map(([lang, info]) => {
+    const langLevels = levels.filter(l => l.language === lang);
+    const completed = langLevels.filter(l => completedLevelIds.includes(l.id)).length;
+    return {
+      language: lang,
+      completed,
+      total: langLevels.length,
+      name: info.name,
+      color: info.color,
+    };
+  });
+
+  // Get earned badges with details
+  const earnedBadges = userBadges?.map(ub => {
+    const badge = allBadges.find(b => b.id === ub.badge_id);
+    return badge ? { ...badge, earnedAt: ub.earned_at } : null;
+  }).filter(Boolean).slice(0, 3) || [];
+
+  // Get recent activity from game sessions
+  const recentActivity = gameSessions?.slice(0, 3).map(session => {
+    const level = levels.find(l => l.id === session.level_id);
+    const completedDate = new Date(session.completed_at);
+    const today = new Date();
+    const diffDays = Math.floor((today.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let dateLabel = 'Today';
+    if (diffDays === 1) dateLabel = 'Yesterday';
+    else if (diffDays > 1) dateLabel = `${diffDays} days ago`;
+    
+    return {
+      level: session.level_id,
+      title: level?.title || 'Unknown Level',
+      score: session.total_questions > 0 
+        ? Math.round((session.correct_answers / session.total_questions) * 100) 
+        : 0,
+      date: dateLabel,
+    };
+  }) || [];
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Navbar xp={userData.xp} level={userData.level} isLoggedIn={true} />
+      <Navbar />
       
       <main className="container mx-auto px-4 pt-24 pb-12">
         {/* Welcome Header */}
         <div className="mb-8">
           <h1 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-2">
-            Welcome back, <span className="text-gradient-primary">{userData.name}</span>!
+            Welcome back, <span className="text-gradient-primary">{profile?.username || 'Player'}</span>!
           </h1>
           <p className="text-muted-foreground">Keep up the great work. You're on a roll!</p>
         </div>
@@ -67,9 +118,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total XP</p>
-                <p className="font-display text-3xl font-bold text-gradient-xp">
-                  {userData.xp.toLocaleString()}
-                </p>
+                {isLoading ? (
+                  <Skeleton className="h-9 w-24 mt-1" />
+                ) : (
+                  <p className="font-display text-3xl font-bold text-gradient-xp">
+                    {(profile?.total_xp || 0).toLocaleString()}
+                  </p>
+                )}
               </div>
               <div className="h-12 w-12 rounded-xl bg-xp/20 flex items-center justify-center">
                 <Zap className="h-6 w-6 text-xp" />
@@ -81,9 +136,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Current Streak</p>
-                <p className="font-display text-3xl font-bold text-foreground">
-                  {userData.streak} days
-                </p>
+                {isLoading ? (
+                  <Skeleton className="h-9 w-20 mt-1" />
+                ) : (
+                  <p className="font-display text-3xl font-bold text-foreground">
+                    {profile?.streak_days || 0} days
+                  </p>
+                )}
               </div>
               <div className="h-12 w-12 rounded-xl bg-destructive/20 flex items-center justify-center">
                 <Flame className="h-6 w-6 text-destructive" />
@@ -95,9 +154,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Levels Complete</p>
-                <p className="font-display text-3xl font-bold text-foreground">
-                  {userData.completedLevels}/{userData.totalLevels}
-                </p>
+                {isLoading ? (
+                  <Skeleton className="h-9 w-16 mt-1" />
+                ) : (
+                  <p className="font-display text-3xl font-bold text-foreground">
+                    {totalCompleted}/{levels.length}
+                  </p>
+                )}
               </div>
               <div className="h-12 w-12 rounded-xl bg-success/20 flex items-center justify-center">
                 <Target className="h-6 w-6 text-success" />
@@ -109,9 +172,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Badges Earned</p>
-                <p className="font-display text-3xl font-bold text-foreground">
-                  {userData.badges.length}
-                </p>
+                {isLoading ? (
+                  <Skeleton className="h-9 w-12 mt-1" />
+                ) : (
+                  <p className="font-display text-3xl font-bold text-foreground">
+                    {userBadges?.length || 0}
+                  </p>
+                )}
               </div>
               <div className="h-12 w-12 rounded-xl bg-secondary/20 flex items-center justify-center">
                 <Trophy className="h-6 w-6 text-secondary" />
@@ -127,7 +194,7 @@ const Dashboard = () => {
             <Card variant="gaming" className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-display text-xl font-semibold text-foreground">
-                  Level {userData.level} Progress
+                  Level {profile?.current_level || 1} Progress
                 </h2>
                 <Badge variant="xp">
                   {currentLevelXP}/{xpToNextLevel} XP
@@ -135,7 +202,7 @@ const Dashboard = () => {
               </div>
               <Progress value={progress} variant="xp" className="h-3 mb-2" />
               <p className="text-sm text-muted-foreground">
-                {xpToNextLevel - currentLevelXP} XP to Level {userData.level + 1}
+                {xpToNextLevel - currentLevelXP} XP to Level {(profile?.current_level || 1) + 1}
               </p>
             </Card>
 
@@ -145,7 +212,7 @@ const Dashboard = () => {
                 Language Progress
               </h2>
               <div className="space-y-6">
-                {userData.languageProgress.map((lang) => (
+                {languageProgressData.map((lang) => (
                   <div key={lang.language}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
@@ -174,25 +241,42 @@ const Dashboard = () => {
                 Recent Activity
               </h2>
               <div className="space-y-4">
-                {userData.recentActivity.map((activity, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center justify-between p-4 rounded-lg bg-muted/50"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                        <span className="font-display font-bold text-primary">{activity.level}</span>
+                {isLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <div className="flex-1">
+                        <Skeleton className="h-5 w-32 mb-2" />
+                        <Skeleton className="h-4 w-20" />
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">{activity.title}</p>
-                        <p className="text-sm text-muted-foreground">{activity.date}</p>
-                      </div>
+                      <Skeleton className="h-6 w-16" />
                     </div>
-                    <Badge variant={activity.score >= 90 ? 'success' : activity.score >= 70 ? 'level' : 'outline'}>
-                      {activity.score}%
-                    </Badge>
+                  ))
+                ) : recentActivity.length > 0 ? (
+                  recentActivity.map((activity, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center justify-between p-4 rounded-lg bg-muted/50"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                          <span className="font-display font-bold text-primary">{activity.level}</span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{activity.title}</p>
+                          <p className="text-sm text-muted-foreground">{activity.date}</p>
+                        </div>
+                      </div>
+                      <Badge variant={activity.score >= 90 ? 'success' : activity.score >= 70 ? 'level' : 'outline'}>
+                        {activity.score}%
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No recent activity. Start playing to see your progress!
                   </div>
-                ))}
+                )}
               </div>
             </Card>
           </div>
@@ -206,15 +290,17 @@ const Dashboard = () => {
               </h2>
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                    <span className="font-display font-bold text-white">4</span>
+                  <div className={`h-12 w-12 rounded-lg bg-gradient-to-br ${LANGUAGE_LEVELS[nextLevel.language].color} flex items-center justify-center`}>
+                    <span className="font-display font-bold text-white">{nextLevel.id}</span>
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">Semantic HTML</p>
-                    <p className="text-sm text-muted-foreground">HTML - In Progress</p>
+                    <p className="font-medium text-foreground">{nextLevel.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {LANGUAGE_LEVELS[nextLevel.language].name}
+                    </p>
                   </div>
                 </div>
-                <Link to="/play/3">
+                <Link to={`/play/${nextLevel.id}`}>
                   <Button variant="hero" className="w-full">
                     <Play className="h-4 w-4 mr-2" />
                     Continue
@@ -228,58 +314,61 @@ const Dashboard = () => {
               <h2 className="font-display text-lg font-semibold text-foreground mb-4">
                 Recent Badges
               </h2>
-              <div className="grid grid-cols-3 gap-3">
-                {userData.badges.map((badge) => (
-                  <div 
-                    key={badge.id}
-                    className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/50 text-center"
-                  >
-                    <span className="text-2xl">{badge.icon}</span>
-                    <span className="text-xs text-muted-foreground">{badge.name}</span>
-                  </div>
-                ))}
-              </div>
-              <Button variant="ghost" className="w-full mt-4" size="sm">
-                View All Badges
-              </Button>
+              {earnedBadges.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {earnedBadges.map((badge: any) => (
+                    <div 
+                      key={badge.id}
+                      className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/50 text-center"
+                    >
+                      <span className="text-2xl">{badge.icon}</span>
+                      <span className="text-xs text-muted-foreground">{badge.name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No badges yet. Complete levels to earn badges!
+                </p>
+              )}
+              <Link to="/levels">
+                <Button variant="ghost" className="w-full mt-4" size="sm">
+                  View All Badges
+                </Button>
+              </Link>
             </Card>
 
-            {/* Areas to Improve */}
+            {/* Leaderboard Position */}
             <Card variant="gaming" className="p-6">
               <h2 className="font-display text-lg font-semibold text-foreground mb-4">
-                <TrendingUp className="h-5 w-5 inline mr-2 text-warning" />
-                Areas to Improve
+                <TrendingUp className="h-5 w-5 inline mr-2 text-primary" />
+                Leaderboard
               </h2>
-              <div className="space-y-2">
-                {userData.weakTopics.map((topic) => (
-                  <div 
-                    key={topic}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/20"
-                  >
-                    <Target className="h-4 w-4 text-warning" />
-                    <span className="text-sm text-foreground">{topic}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-muted-foreground text-sm mb-4">
+                See how you rank against other players!
+              </p>
+              <Link to="/leaderboard">
+                <Button variant="outline" className="w-full">
+                  <Trophy className="h-4 w-4 mr-2" />
+                  View Leaderboard
+                </Button>
+              </Link>
             </Card>
 
-            {/* Strengths */}
+            {/* AI Tutor */}
             <Card variant="gaming" className="p-6">
               <h2 className="font-display text-lg font-semibold text-foreground mb-4">
                 <Award className="h-5 w-5 inline mr-2 text-success" />
-                Your Strengths
+                Need Help?
               </h2>
-              <div className="space-y-2">
-                {userData.strongTopics.map((topic) => (
-                  <div 
-                    key={topic}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-success/10 border border-success/20"
-                  >
-                    <Award className="h-4 w-4 text-success" />
-                    <span className="text-sm text-foreground">{topic}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-muted-foreground text-sm mb-4">
+                Get personalized help from our AI tutor anytime!
+              </p>
+              <Link to="/tutor">
+                <Button variant="outline" className="w-full">
+                  Ask AI Tutor
+                </Button>
+              </Link>
             </Card>
           </div>
         </div>

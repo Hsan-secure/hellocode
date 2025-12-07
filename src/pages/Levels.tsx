@@ -4,12 +4,17 @@ import { Navbar } from '@/components/Navbar';
 import { LevelCard } from '@/components/LevelCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { levels } from '@/data/levels';
 import { LANGUAGE_LEVELS, Language } from '@/types/game';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useUserLevelProgress } from '@/hooks/useUserProgress';
 
 const Levels = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: levelProgress, isLoading } = useUserLevelProgress();
   const [activeFilter, setActiveFilter] = useState<Language | 'all'>('all');
 
   const languageFilters: { key: Language | 'all'; label: string; color?: string }[] = [
@@ -26,13 +31,35 @@ const Levels = () => {
     ? levels 
     : levels.filter(level => level.language === activeFilter);
 
-  // Simulate user progress - in real app, this comes from backend
-  const userLevels = levels.map((level, index) => ({
-    ...level,
-    isUnlocked: index <= 2, // First 3 levels unlocked
-    isCompleted: index < 1, // First level completed
-    bestScore: index === 0 ? 85 : undefined,
-  }));
+  // Get completed level IDs
+  const completedLevelIds = levelProgress?.filter(p => p.is_completed).map(p => p.level_id) || [];
+  
+  // Calculate which levels are unlocked
+  // First level is always unlocked, subsequent levels unlock when previous is completed
+  const getUnlockedLevels = () => {
+    const unlocked = new Set<number>();
+    unlocked.add(0); // First level always unlocked
+    
+    for (const levelId of completedLevelIds) {
+      unlocked.add(levelId);
+      unlocked.add(levelId + 1); // Unlock next level
+    }
+    
+    return unlocked;
+  };
+  
+  const unlockedLevels = getUnlockedLevels();
+
+  // Map levels with user progress
+  const userLevels = levels.map((level) => {
+    const progress = levelProgress?.find(p => p.level_id === level.id);
+    return {
+      ...level,
+      isUnlocked: !user || unlockedLevels.has(level.id), // All unlocked if not logged in
+      isCompleted: progress?.is_completed || false,
+      bestScore: progress?.best_score ?? undefined,
+    };
+  });
 
   const handleLevelClick = (levelId: number) => {
     navigate(`/play/${levelId}`);
@@ -40,7 +67,7 @@ const Levels = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Navbar xp={850} level={3} isLoggedIn={true} />
+      <Navbar />
       
       <main className="container mx-auto px-4 pt-24 pb-12">
         {/* Header */}
@@ -72,7 +99,13 @@ const Levels = () => {
         </div>
 
         {/* Level Groups by Language */}
-        {activeFilter === 'all' ? (
+        {isLoading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-48 rounded-xl" />
+            ))}
+          </div>
+        ) : activeFilter === 'all' ? (
           Object.entries(LANGUAGE_LEVELS).map(([lang, info]) => {
             const langLevels = userLevels.filter(l => l.language === lang);
             const completedCount = langLevels.filter(l => l.isCompleted).length;

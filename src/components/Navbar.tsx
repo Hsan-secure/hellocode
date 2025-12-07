@@ -1,20 +1,34 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Gamepad2, Trophy, MessageCircle, User, Zap } from 'lucide-react';
+import { Gamepad2, Trophy, MessageCircle, User, Zap, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useUserProfile } from '@/hooks/useUserProgress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-interface NavbarProps {
-  xp?: number;
-  level?: number;
-  isLoggedIn?: boolean;
-}
-
-export function Navbar({ xp = 0, level = 1, isLoggedIn = false }: NavbarProps) {
+export function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { data: profile } = useUserProfile();
+
+  const xp = profile?.total_xp || 0;
+  const level = profile?.current_level || 1;
   const xpToNextLevel = 1000;
   const currentLevelXP = xp % xpToNextLevel;
   const progress = (currentLevelXP / xpToNextLevel) * 100;
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -64,7 +78,7 @@ export function Navbar({ xp = 0, level = 1, isLoggedIn = false }: NavbarProps) {
 
           {/* User Section */}
           <div className="flex items-center gap-4">
-            {isLoggedIn ? (
+            {user ? (
               <>
                 {/* XP Progress */}
                 <div className="hidden sm:flex items-center gap-3">
@@ -77,11 +91,29 @@ export function Navbar({ xp = 0, level = 1, isLoggedIn = false }: NavbarProps) {
                     <Progress value={progress} variant="xp" className="w-20 h-1.5" />
                   </div>
                 </div>
-                <Link to="/dashboard">
-                  <Button variant="ghost" size="icon" className="relative">
-                    <User className="h-5 w-5" />
-                  </Button>
-                </Link>
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="relative">
+                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">
+                          {profile?.username?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => navigate('/dashboard')}>
+                      <User className="h-4 w-4 mr-2" />
+                      Dashboard
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             ) : (
               <div className="flex items-center gap-2">

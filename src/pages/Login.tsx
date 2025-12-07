@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,27 +6,55 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Gamepad2, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { signIn, user, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !loading) {
+      navigate('/dashboard');
+    }
+  }, [user, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate login - replace with actual auth when connected to Lovable Cloud
-    setTimeout(() => {
+    const { error } = await signIn(email, password);
+    
+    if (error) {
       toast({
-        title: "Welcome back!",
-        description: "Successfully logged in to your account.",
+        title: "Login failed",
+        description: error.message === 'Invalid login credentials' 
+          ? "Invalid email or password. Please try again."
+          : error.message,
+        variant: "destructive",
       });
-      navigate('/dashboard');
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    toast({
+      title: "Welcome back!",
+      description: "Successfully logged in to your account.",
+    });
+    navigate('/dashboard');
+    setIsLoading(false);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
+        <Sparkles className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4">
@@ -74,12 +102,6 @@ const Login = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Link 
-                  to="/forgot-password" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Forgot password?
-                </Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />

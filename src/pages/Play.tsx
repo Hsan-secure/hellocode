@@ -9,12 +9,19 @@ import { Badge } from '@/components/ui/badge';
 import { levels, sampleQuestions } from '@/data/levels';
 import { Question, LANGUAGE_LEVELS } from '@/types/game';
 import { ArrowLeft, MessageCircle } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useSaveGameSession, useAwardBadge } from '@/hooks/useUserProgress';
+import { toast } from '@/hooks/use-toast';
 
 type GameState = 'intro' | 'playing' | 'results';
 
 const Play = () => {
   const { levelId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const saveGameSession = useSaveGameSession();
+  const awardBadge = useAwardBadge();
+  
   const [gameState, setGameState] = useState<GameState>('intro');
   const [showTutor, setShowTutor] = useState(false);
   const [tutorContext, setTutorContext] = useState<string | undefined>();
@@ -48,9 +55,46 @@ const Play = () => {
     );
   }
 
-  const handleGameComplete = (score: number, correctAnswers: number, hintsUsed: number) => {
+  const handleGameComplete = async (score: number, correctAnswers: number, hintsUsed: number) => {
     setResults({ score, correctAnswers, hintsUsed });
     setGameState('results');
+    
+    const xpEarned = Math.round(level.xpReward * (correctAnswers / questions.length));
+    const passedLevel = correctAnswers >= Math.ceil(questions.length * 0.6);
+    
+    // Save game session if user is logged in
+    if (user) {
+      try {
+        await saveGameSession.mutateAsync({
+          level_id: level.id,
+          score,
+          correct_answers: correctAnswers,
+          total_questions: questions.length,
+          hints_used: hintsUsed,
+          xp_earned: xpEarned,
+        });
+
+        // Award badges based on achievements
+        if (level.id === 0 && passedLevel) {
+          await awardBadge.mutateAsync('first-blood');
+        }
+        
+        if (score === 100) {
+          await awardBadge.mutateAsync('perfect-score');
+        }
+        
+        if (hintsUsed === 0 && passedLevel) {
+          await awardBadge.mutateAsync('no-hints');
+        }
+
+        toast({
+          title: passedLevel ? "Level Complete!" : "Good Try!",
+          description: `You earned ${xpEarned} XP`,
+        });
+      } catch (error) {
+        console.error('Error saving game session:', error);
+      }
+    }
   };
 
   const handleAskTutor = (question: Question, userAnswer?: number) => {
@@ -78,7 +122,7 @@ const Play = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Navbar xp={850} level={3} isLoggedIn={true} />
+      <Navbar />
       
       <main className="container mx-auto px-4 pt-24 pb-12">
         {/* Back Button */}

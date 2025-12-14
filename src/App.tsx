@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Certificates from "./pages/Certificates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/certificates" element={<Certificates />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

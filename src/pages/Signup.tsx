@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,14 +7,23 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Gamepad2, Mail, Lock, User, ArrowRight, Sparkles, Check } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const Signup = () => {
   const navigate = useNavigate();
+  const { signUp, user, loading } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !loading) {
+      navigate('/dashboard');
+    }
+  }, [user, loading, navigate]);
 
   const passwordRequirements = [
     { text: 'At least 8 characters', met: password.length >= 8 },
@@ -34,18 +43,47 @@ const Signup = () => {
       return;
     }
 
+    const allRequirementsMet = passwordRequirements.every(req => req.met);
+    if (!allRequirementsMet) {
+      toast({
+        title: "Password requirements not met",
+        description: "Please ensure your password meets all requirements.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate signup - replace with actual auth when connected to Lovable Cloud
-    setTimeout(() => {
+    const { error } = await signUp(email, password, name);
+    
+    if (error) {
       toast({
-        title: "Account created!",
-        description: "Welcome to CodeQuest. Let's start learning!",
+        title: "Signup failed",
+        description: error.message === 'User already registered' 
+          ? "This email is already registered. Please log in instead."
+          : error.message,
+        variant: "destructive",
       });
-      navigate('/dashboard');
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    toast({
+      title: "Account created!",
+      description: "Welcome to CodeQuest. Let's start learning!",
+    });
+    navigate('/dashboard');
+    setIsLoading(false);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
+        <Sparkles className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4 py-12">

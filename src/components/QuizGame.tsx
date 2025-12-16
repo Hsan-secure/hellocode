@@ -1,17 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Question } from '@/types/game';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { Timer, Lightbulb, Check, X, Zap, MessageCircle } from 'lucide-react';
+import { Timer, Lightbulb, Check, X, Zap, MessageCircle, Sparkles } from 'lucide-react';
 
 interface QuizGameProps {
   questions: Question[];
   levelId: number;
   onComplete: (score: number, correctAnswers: number, hintsUsed: number) => void;
   onAskTutor: (question: Question, userAnswer?: number) => void;
+}
+
+// Confetti component
+function Confetti({ count = 30 }: { count?: number }) {
+  const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffaa00', '#ff4444'];
+  
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="confetti-particle"
+          style={{
+            left: `${Math.random() * 100}%`,
+            backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+            animationDelay: `${Math.random() * 0.5}s`,
+            borderRadius: Math.random() > 0.5 ? '50%' : '0',
+            transform: `rotate(${Math.random() * 360}deg)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Floating XP indicator
+function FloatingXP({ points, show }: { points: number; show: boolean }) {
+  if (!show) return null;
+  
+  return (
+    <div className="absolute -top-8 left-1/2 -translate-x-1/2 animate-xp-fly">
+      <Badge variant="xp" className="text-lg font-bold">
+        +{points}
+      </Badge>
+    </div>
+  );
 }
 
 export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGameProps) {
@@ -24,6 +60,11 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
   const [showHint, setShowHint] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
   const [streak, setStreak] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [lastPoints, setLastPoints] = useState(0);
+  const [showFloatingXP, setShowFloatingXP] = useState(false);
+  const [shakeCard, setShakeCard] = useState(false);
+  const [scorePop, setScorePop] = useState(false);
 
   const currentQuestion = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
@@ -45,7 +86,7 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
     return () => clearInterval(timer);
   }, [currentIndex, isAnswered]);
 
-  const handleSubmit = (answer: number) => {
+  const handleSubmit = useCallback((answer: number) => {
     if (isAnswered) return;
     
     setSelectedAnswer(answer);
@@ -60,13 +101,26 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
       const hintPenalty = showHint ? 30 : 0;
       const points = Math.max(basePoints + timeBonus + streakBonus - hintPenalty, 10);
       
+      setLastPoints(points);
       setScore(prev => prev + points);
       setCorrectCount(prev => prev + 1);
       setStreak(prev => prev + 1);
+      setShowConfetti(true);
+      setShowFloatingXP(true);
+      setScorePop(true);
+      
+      // Clear effects
+      setTimeout(() => {
+        setShowConfetti(false);
+        setShowFloatingXP(false);
+        setScorePop(false);
+      }, 1500);
     } else {
       setStreak(0);
+      setShakeCard(true);
+      setTimeout(() => setShakeCard(false), 500);
     }
-  };
+  }, [isAnswered, currentQuestion, timeLeft, streak, showHint]);
 
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
@@ -93,24 +147,39 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+      {/* Confetti Effect */}
+      {showConfetti && <Confetti />}
+      
       {/* Header Stats */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Badge variant="xp" className="text-lg px-4 py-2">
+        <div className="flex items-center gap-4 relative">
+          <Badge 
+            variant="xp" 
+            className={cn(
+              "text-lg px-4 py-2 transition-all duration-300",
+              scorePop && "animate-score-pop"
+            )}
+          >
             <Zap className="h-4 w-4 mr-1" />
             {score} pts
           </Badge>
+          <FloatingXP points={lastPoints} show={showFloatingXP} />
           {streak > 1 && (
             <Badge variant="success" className="animate-bounce-in">
-              🔥 {streak}x Streak!
+              <span className={cn(streak >= 3 && "animate-streak-fire inline-block")}>🔥</span>
+              {' '}{streak}x Streak!
             </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Timer className={cn("h-5 w-5", timeLeft <= 10 && "text-destructive animate-pulse")} />
+          <Timer className={cn(
+            "h-5 w-5 transition-all",
+            timeLeft <= 10 && "text-destructive animate-pulse"
+          )} />
           <span className={cn(
-            "font-display text-xl font-bold",
-            timeLeft <= 10 ? "text-destructive" : "text-foreground"
+            "font-display text-xl font-bold transition-all",
+            timeLeft <= 10 ? "animate-timer-warning" : "text-foreground",
+            timeLeft <= 5 && "text-glow-success"
           )}>
             {timeLeft}s
           </span>
@@ -123,16 +192,38 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
           <span>Question {currentIndex + 1} of {questions.length}</span>
           <span>{Math.round(progress)}% Complete</span>
         </div>
-        <Progress value={progress} variant="xp" className="h-2" />
+        <div className="relative">
+          <Progress value={progress} variant="xp" className="h-2" />
+          <div 
+            className="absolute top-0 left-0 h-full bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
       </div>
 
       {/* Question Card */}
-      <Card variant="glow" className="p-8">
+      <Card 
+        variant="glow" 
+        className={cn(
+          "p-8 transition-all duration-300",
+          shakeCard && "animate-shake",
+          isAnswered && isCorrect && "animate-correct-pulse border-success",
+          isAnswered && !isCorrect && "animate-wrong-flash border-destructive"
+        )}
+      >
         <div className="space-y-6">
           {/* Question Type Badge */}
-          <Badge variant="level" className="capitalize">
-            {currentQuestion.type.replace('-', ' ')}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="level" className="capitalize">
+              {currentQuestion.type.replace('-', ' ')}
+            </Badge>
+            {streak >= 3 && (
+              <Badge variant="success" className="bg-gradient-to-r from-success to-primary">
+                <Sparkles className="h-3 w-3 mr-1" />
+                On Fire!
+              </Badge>
+            )}
+          </div>
 
           {/* Question Text */}
           <h2 className="font-display text-2xl font-bold text-foreground">
@@ -141,8 +232,9 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
 
           {/* Code Block (if any) */}
           {currentQuestion.code && (
-            <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto">
-              <pre className="text-foreground whitespace-pre-wrap">{currentQuestion.code}</pre>
+            <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg" />
+              <pre className="text-foreground whitespace-pre-wrap relative z-10">{currentQuestion.code}</pre>
             </div>
           )}
 
@@ -154,27 +246,32 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
                 onClick={() => !isAnswered && handleSubmit(index)}
                 disabled={isAnswered}
                 className={cn(
-                  "p-4 rounded-lg border text-left transition-all duration-200",
-                  "hover:border-primary/50 hover:bg-muted/50",
-                  selectedAnswer === index && isCorrect && "border-success bg-success/10",
+                  "p-4 rounded-lg border text-left transition-all duration-300 relative overflow-hidden group",
+                  "hover:border-primary/50 hover:bg-muted/50 hover:scale-[1.01] hover:shadow-lg",
+                  selectedAnswer === index && isCorrect && "border-success bg-success/10 scale-[1.02] shadow-[0_0_20px_hsl(145_80%_50%/0.3)]",
                   selectedAnswer === index && !isCorrect && "border-destructive bg-destructive/10",
-                  isAnswered && index === currentQuestion.correctAnswer && "border-success bg-success/10",
+                  isAnswered && index === currentQuestion.correctAnswer && selectedAnswer !== index && "border-success bg-success/10",
                   !isAnswered && "border-border bg-card cursor-pointer",
                   isAnswered && "cursor-default"
                 )}
               >
-                <div className="flex items-center gap-3">
+                {/* Hover effect overlay */}
+                {!isAnswered && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                )}
+                
+                <div className="flex items-center gap-3 relative z-10">
                   <span className={cn(
-                    "flex items-center justify-center h-8 w-8 rounded-full text-sm font-semibold",
-                    selectedAnswer === index && isCorrect && "bg-success text-success-foreground",
+                    "flex items-center justify-center h-8 w-8 rounded-full text-sm font-semibold transition-all duration-300",
+                    selectedAnswer === index && isCorrect && "bg-success text-success-foreground scale-110",
                     selectedAnswer === index && !isCorrect && "bg-destructive text-destructive-foreground",
                     isAnswered && index === currentQuestion.correctAnswer && selectedAnswer !== index && "bg-success text-success-foreground",
-                    (!isAnswered || (isAnswered && selectedAnswer !== index && index !== currentQuestion.correctAnswer)) && "bg-muted text-muted-foreground"
+                    (!isAnswered || (isAnswered && selectedAnswer !== index && index !== currentQuestion.correctAnswer)) && "bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
                   )}>
                     {isAnswered && index === currentQuestion.correctAnswer ? (
-                      <Check className="h-4 w-4" />
+                      <Check className="h-4 w-4 animate-bounce-in" />
                     ) : isAnswered && selectedAnswer === index && !isCorrect ? (
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4 animate-shake" />
                     ) : (
                       String.fromCharCode(65 + index)
                     )}
@@ -189,7 +286,7 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
           {showHint && (
             <div className="p-4 rounded-lg bg-warning/10 border border-warning/30 animate-fade-in">
               <div className="flex items-start gap-3">
-                <Lightbulb className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+                <Lightbulb className="h-5 w-5 text-warning flex-shrink-0 mt-0.5 animate-pulse" />
                 <p className="text-sm text-foreground">{currentQuestion.hint}</p>
               </div>
             </div>
@@ -205,16 +302,23 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
             )}>
               <div className="flex items-start gap-3">
                 {isCorrect ? (
-                  <Check className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
+                  <div className="relative">
+                    <Check className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
+                    <div className="absolute inset-0 animate-ping">
+                      <Check className="h-5 w-5 text-success opacity-50" />
+                    </div>
+                  </div>
                 ) : (
                   <X className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
                 )}
                 <div>
                   <p className={cn(
                     "font-semibold mb-1",
-                    isCorrect ? "text-success" : "text-destructive"
+                    isCorrect ? "text-success text-glow-success" : "text-destructive"
                   )}>
-                    {isCorrect ? "Correct!" : "Not quite right"}
+                    {isCorrect ? (
+                      streak >= 3 ? "🔥 Incredible!" : streak >= 2 ? "Amazing!" : "Correct!"
+                    ) : "Not quite right"}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {currentQuestion.explanation}
@@ -230,7 +334,11 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           {!isAnswered && !showHint && (
-            <Button variant="outline" onClick={handleHint}>
+            <Button 
+              variant="outline" 
+              onClick={handleHint}
+              className="hover:scale-105 transition-transform"
+            >
               <Lightbulb className="h-4 w-4 mr-2" />
               Show Hint (-30 pts)
             </Button>
@@ -238,6 +346,7 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
           <Button 
             variant="ghost" 
             onClick={() => onAskTutor(currentQuestion, selectedAnswer ?? undefined)}
+            className="hover:scale-105 transition-transform"
           >
             <MessageCircle className="h-4 w-4 mr-2" />
             Ask AI Tutor
@@ -245,7 +354,11 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
         </div>
         
         {isAnswered && (
-          <Button variant="hero" onClick={handleNext}>
+          <Button 
+            variant="hero" 
+            onClick={handleNext}
+            className="animate-bounce-in hover:scale-105 transition-transform"
+          >
             {currentIndex < questions.length - 1 ? 'Next Question' : 'See Results'}
           </Button>
         )}

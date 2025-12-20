@@ -128,14 +128,18 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               <p className="text-muted-foreground text-sm uppercase tracking-wider">
                 This is to certify that
               </p>
-              <h2 
-                className="text-4xl font-bold text-foreground py-2"
-                style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                }}
-              >
-                {userName}
-              </h2>
+              <div className="relative inline-block px-12 py-2">
+                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gradient-to-r from-transparent via-foreground/30 to-transparent" />
+                <h2 
+                  className="text-4xl font-bold text-foreground relative z-10"
+                  style={{
+                    fontFamily: "'Orbitron', sans-serif",
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {userName}
+                </h2>
+              </div>
             </div>
 
             {/* Achievement */}
@@ -174,21 +178,24 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               </div>
 
               <div className="text-center">
-                <div 
-                  className="text-3xl mb-1"
-                  style={{
-                    fontFamily: "'Dancing Script', cursive, 'Orbitron', sans-serif",
-                    background: 'linear-gradient(135deg, hsl(270 60% 50%), hsl(300 70% 50%))',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  HSAN
+                <div className="relative inline-block">
+                  <div 
+                    className="text-4xl mb-0 italic"
+                    style={{
+                      fontFamily: "'Brush Script MT', 'Segoe Script', cursive",
+                      background: 'linear-gradient(135deg, hsl(270 80% 60%), hsl(320 90% 55%))',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      textShadow: '0 2px 20px hsl(270 80% 60% / 0.4)',
+                    }}
+                  >
+                    HSAN
+                  </div>
+                  <div className="w-36 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent mx-auto" />
+                  <p className="text-xs text-muted-foreground uppercase tracking-[0.2em] mt-2 font-medium">
+                    CEO & Founder
+                  </p>
                 </div>
-                <div className="w-32 h-0.5 bg-gradient-to-r from-transparent via-primary/50 to-transparent mb-1" />
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  CEO & Founder
-                </p>
               </div>
 
               <div className="text-right">

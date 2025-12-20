@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Gamepad2, Trophy, MessageCircle, User, Zap, LogOut, Award } from 'lucide-react';
+import { Gamepad2, Trophy, MessageCircle, User, Zap, LogOut, Award, BookOpen } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile } from '@/hooks/useUserProgress';
 import {
@@ -73,6 +73,15 @@ export function Navbar() {
             >
               <MessageCircle className="h-4 w-4" />
               AI Tutor
+            </Link>
+            <Link 
+              to="/learn" 
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                location.pathname === '/learn' ? 'text-primary' : 'text-muted-foreground'
+              }`}
+            >
+              <BookOpen className="h-4 w-4" />
+              LearnFirst
             </Link>
           </div>
 

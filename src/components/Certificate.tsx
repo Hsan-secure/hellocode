@@ -1,8 +1,14 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Award, Download, Share2 } from 'lucide-react';
+import { Award, Download, Share2, FileImage, FileText, ChevronDown } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface CertificateProps {
   userName: string;
@@ -23,31 +29,35 @@ const languageNames: Record<string, string> = {
 export function Certificate({ userName, language, completionDate, onClose }: CertificateProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
 
-  const handleDownload = async () => {
-    if (!certificateRef.current) return;
+  const [isDownloading, setIsDownloading] = useState(false);
 
-    try {
-      // Dynamic import of html2canvas
-      const html2canvasModule = await import('html2canvas');
-      const html2canvas = html2canvasModule.default;
-      
-      // Create a canvas from the certificate with proper options
-      const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
-        backgroundColor: '#0a0e1a',
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        onclone: (clonedDoc) => {
-          // Remove backdrop blur from cloned element for better rendering
-          const clonedElement = clonedDoc.querySelector('[data-certificate]');
-          if (clonedElement) {
-            (clonedElement as HTMLElement).style.backdropFilter = 'none';
-          }
+  const generateCanvas = async () => {
+    if (!certificateRef.current) return null;
+    
+    const html2canvasModule = await import('html2canvas');
+    const html2canvas = html2canvasModule.default;
+    
+    return await html2canvas(certificateRef.current, {
+      scale: 2,
+      backgroundColor: '#0a0e1a',
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      onclone: (clonedDoc) => {
+        const clonedElement = clonedDoc.querySelector('[data-certificate]');
+        if (clonedElement) {
+          (clonedElement as HTMLElement).style.backdropFilter = 'none';
         }
-      });
+      }
+    });
+  };
+
+  const handleDownloadPNG = async () => {
+    setIsDownloading(true);
+    try {
+      const canvas = await generateCanvas();
+      if (!canvas) return;
       
-      // Convert to blob and download
       canvas.toBlob((blob) => {
         if (blob) {
           const url = URL.createObjectURL(blob);
@@ -60,8 +70,8 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
           URL.revokeObjectURL(url);
           
           toast({
-            title: "Certificate Downloaded!",
-            description: "Your certificate has been saved.",
+            title: "PNG Downloaded!",
+            description: "Your certificate has been saved as PNG.",
           });
         }
       }, 'image/png', 1.0);
@@ -72,6 +82,46 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
         description: "Please try again or take a screenshot.",
         variant: "destructive",
       });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsDownloading(true);
+    try {
+      const canvas = await generateCanvas();
+      if (!canvas) return;
+      
+      const { jsPDF } = await import('jspdf');
+      
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      // Create PDF in landscape orientation
+      const pdf = new jsPDF({
+        orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [imgWidth / 2, imgHeight / 2],
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2);
+      pdf.save(`CodeQuest-${languageNames[language]}-Certificate.pdf`);
+      
+      toast({
+        title: "PDF Downloaded!",
+        description: "Your certificate has been saved as PDF.",
+      });
+    } catch (error) {
+      console.error('PDF Download error:', error);
+      toast({
+        title: "Download failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -251,10 +301,25 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </Button>
-            <Button variant="hero" onClick={handleDownload}>
-              <Download className="h-4 w-4 mr-2" />
-              Download Certificate
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="hero" disabled={isDownloading}>
+                  <Download className="h-4 w-4 mr-2" />
+                  {isDownloading ? 'Downloading...' : 'Download'}
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleDownloadPNG}>
+                  <FileImage className="h-4 w-4 mr-2" />
+                  Download as PNG
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDownloadPDF}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Download as PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </Card>
       </div>

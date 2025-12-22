@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Timer, Lightbulb, Check, X, Zap, MessageCircle, Sparkles } from 'lucide-react';
+import { useSoundEffects } from '@/hooks/useSoundEffects';
 
 interface QuizGameProps {
   questions: Question[];
@@ -66,6 +67,7 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
   const [shakeCard, setShakeCard] = useState(false);
   const [scorePop, setScorePop] = useState(false);
 
+  const { playCorrect, playWrong, playStreak } = useSoundEffects();
   const currentQuestion = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
@@ -109,6 +111,12 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
       setShowFloatingXP(true);
       setScorePop(true);
       
+      // Play sound effects
+      playCorrect();
+      if (streak >= 2) {
+        setTimeout(() => playStreak(), 300);
+      }
+      
       // Clear effects
       setTimeout(() => {
         setShowConfetti(false);
@@ -118,6 +126,7 @@ export function QuizGame({ questions, levelId, onComplete, onAskTutor }: QuizGam
     } else {
       setStreak(0);
       setShakeCard(true);
+      playWrong();
       setTimeout(() => setShakeCard(false), 500);
     }
   }, [isAnswered, currentQuestion, timeLeft, streak, showHint]);

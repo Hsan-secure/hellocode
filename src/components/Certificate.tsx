@@ -27,23 +27,46 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
     if (!certificateRef.current) return;
 
     try {
-      // Create a canvas from the certificate
-      const html2canvas = (await import('html2canvas')).default;
+      // Dynamic import of html2canvas
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default;
+      
+      // Create a canvas from the certificate with proper options
       const canvas = await html2canvas(certificateRef.current, {
         scale: 2,
         backgroundColor: '#0a0e1a',
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Remove backdrop blur from cloned element for better rendering
+          const clonedElement = clonedDoc.querySelector('[data-certificate]');
+          if (clonedElement) {
+            (clonedElement as HTMLElement).style.backdropFilter = 'none';
+          }
+        }
       });
       
-      const link = document.createElement('a');
-      link.download = `CodeQuest-${languageNames[language]}-Certificate.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-
-      toast({
-        title: "Certificate Downloaded!",
-        description: "Your certificate has been saved.",
-      });
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `CodeQuest-${languageNames[language]}-Certificate.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          toast({
+            title: "Certificate Downloaded!",
+            description: "Your certificate has been saved.",
+          });
+        }
+      }, 'image/png', 1.0);
     } catch (error) {
+      console.error('Download error:', error);
       toast({
         title: "Download failed",
         description: "Please try again or take a screenshot.",
@@ -82,6 +105,7 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
         {/* Certificate */}
         <div
           ref={certificateRef}
+          data-certificate
           className="relative bg-gradient-to-br from-[#0a0e1a] via-[#0f1629] to-[#1a0f29] rounded-xl p-8 border-4 border-primary/30 overflow-hidden"
         >
           {/* Background decorations */}

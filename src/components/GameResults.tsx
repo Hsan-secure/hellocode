@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Trophy, Star, Zap, RotateCcw, ArrowRight, Share2, Sparkles, PartyPopper } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSoundEffects } from '@/hooks/useSoundEffects';
 
 interface GameResultsProps {
   score: number;
@@ -18,9 +19,10 @@ interface GameResultsProps {
   onGoHome: () => void;
 }
 
-// Animated counter hook
-function useAnimatedCounter(end: number, duration: number = 1000) {
+// Animated counter hook with sound
+function useAnimatedCounter(end: number, duration: number = 1000, playSound?: () => void) {
   const [count, setCount] = useState(0);
+  const lastSoundRef = useRef(0);
   
   useEffect(() => {
     let startTime: number;
@@ -32,7 +34,14 @@ function useAnimatedCounter(end: number, duration: number = 1000) {
       
       // Easing function
       const easeOut = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.floor(easeOut * end));
+      const newCount = Math.floor(easeOut * end);
+      setCount(newCount);
+      
+      // Play count-up sound at intervals
+      if (playSound && newCount - lastSoundRef.current >= Math.max(end / 10, 1)) {
+        playSound();
+        lastSoundRef.current = newCount;
+      }
       
       if (progress < 1) {
         animationFrame = requestAnimationFrame(animate);
@@ -41,7 +50,7 @@ function useAnimatedCounter(end: number, duration: number = 1000) {
     
     animationFrame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationFrame);
-  }, [end, duration]);
+  }, [end, duration, playSound]);
   
   return count;
 }
@@ -129,18 +138,25 @@ export function GameResults({
   onGoHome,
 }: GameResultsProps) {
   const [showConfetti, setShowConfetti] = useState(false);
+  const { playLevelComplete, playCountUp } = useSoundEffects();
+  const hasPlayedRef = useRef(false);
   const percentage = Math.round((correctAnswers / totalQuestions) * 100);
-  const animatedScore = useAnimatedCounter(score, 1500);
+  const animatedScore = useAnimatedCounter(score, 1500, playCountUp);
   const animatedXP = useAnimatedCounter(xpEarned, 1200);
   const animatedPercentage = useAnimatedCounter(percentage, 1000);
   
   useEffect(() => {
-    if (levelCompleted || percentage >= 70) {
+    if ((levelCompleted || percentage >= 70) && !hasPlayedRef.current) {
       setShowConfetti(true);
+      hasPlayedRef.current = true;
+      
+      // Play celebration sound
+      setTimeout(() => playLevelComplete(), 300);
+      
       const timer = setTimeout(() => setShowConfetti(false), 3000);
       return () => clearTimeout(timer);
     }
-  }, [levelCompleted, percentage]);
+  }, [levelCompleted, percentage, playLevelComplete]);
   
   const getGrade = () => {
     if (percentage >= 90) return { grade: 'S', color: 'text-gradient-xp', message: 'LEGENDARY!', icon: PartyPopper };

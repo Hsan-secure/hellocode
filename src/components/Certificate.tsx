@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Award, Download, Share2, FileImage, FileText, ChevronDown } from 'lucide-react';
+import { Download, Share2, FileImage, FileText, ChevronDown } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -28,8 +28,8 @@ const languageNames: Record<string, string> = {
 
 export function Certificate({ userName, language, completionDate, onClose }: CertificateProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
-
   const [isDownloading, setIsDownloading] = useState(false);
+  const certificateId = `CQ-${language.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 
   const generateCanvas = async () => {
     if (!certificateRef.current) return null;
@@ -38,17 +38,11 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
     const html2canvas = html2canvasModule.default;
     
     return await html2canvas(certificateRef.current, {
-      scale: 2,
-      backgroundColor: '#0a0e1a',
+      scale: 3,
+      backgroundColor: '#ffffff',
       useCORS: true,
       allowTaint: true,
       logging: false,
-      onclone: (clonedDoc) => {
-        const clonedElement = clonedDoc.querySelector('[data-certificate]');
-        if (clonedElement) {
-          (clonedElement as HTMLElement).style.backdropFilter = 'none';
-        }
-      }
     });
   };
 
@@ -71,7 +65,7 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
           
           toast({
             title: "PNG Downloaded!",
-            description: "Your certificate has been saved as PNG.",
+            description: "Your certificate has been saved.",
           });
         }
       }, 'image/png', 1.0);
@@ -79,7 +73,7 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
       console.error('Download error:', error);
       toast({
         title: "Download failed",
-        description: "Please try again or take a screenshot.",
+        description: "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -99,19 +93,18 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
       
-      // Create PDF in landscape orientation
       const pdf = new jsPDF({
-        orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
+        orientation: 'landscape',
         unit: 'px',
-        format: [imgWidth / 2, imgHeight / 2],
+        format: [imgWidth / 3, imgHeight / 3],
       });
       
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2);
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 3, imgHeight / 3);
       pdf.save(`CodeQuest-${languageNames[language]}-Certificate.pdf`);
       
       toast({
         title: "PDF Downloaded!",
-        description: "Your certificate has been saved as PDF.",
+        description: "Your certificate has been saved.",
       });
     } catch (error) {
       console.error('PDF Download error:', error);
@@ -150,142 +143,151 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="w-full max-w-3xl space-y-4">
-        {/* Certificate */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-auto">
+      <div className="w-full max-w-4xl space-y-4 my-8">
+        {/* Professional Certificate - MNC Style */}
         <div
           ref={certificateRef}
-          data-certificate
-          className="relative bg-gradient-to-br from-[#0a0e1a] via-[#0f1629] to-[#1a0f29] rounded-xl p-8 border-4 border-primary/30 overflow-hidden"
+          className="relative bg-white aspect-[1.414/1] w-full overflow-hidden"
+          style={{ 
+            fontFamily: "'Times New Roman', Georgia, serif",
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+          }}
         >
-          {/* Background decorations */}
-          <div className="absolute top-0 left-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 bg-secondary/10 rounded-full blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+          {/* Outer Border */}
+          <div className="absolute inset-3 border-2 border-[#1a365d]" />
+          <div className="absolute inset-5 border border-[#c9a227]" />
           
-          {/* Corner decorations */}
-          <div className="absolute top-4 left-4 w-16 h-16 border-l-2 border-t-2 border-primary/50 rounded-tl-xl" />
-          <div className="absolute top-4 right-4 w-16 h-16 border-r-2 border-t-2 border-primary/50 rounded-tr-xl" />
-          <div className="absolute bottom-4 left-4 w-16 h-16 border-l-2 border-b-2 border-primary/50 rounded-bl-xl" />
-          <div className="absolute bottom-4 right-4 w-16 h-16 border-r-2 border-b-2 border-primary/50 rounded-br-xl" />
+          {/* Corner Ornaments */}
+          <div className="absolute top-6 left-6 w-12 h-12 border-l-4 border-t-4 border-[#1a365d]" />
+          <div className="absolute top-6 right-6 w-12 h-12 border-r-4 border-t-4 border-[#1a365d]" />
+          <div className="absolute bottom-6 left-6 w-12 h-12 border-l-4 border-b-4 border-[#1a365d]" />
+          <div className="absolute bottom-6 right-6 w-12 h-12 border-r-4 border-b-4 border-[#1a365d]" />
 
-          <div className="relative z-10 text-center space-y-6">
-            {/* Header */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <Award className="h-8 w-8 text-xp" />
-                <span className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">
-                  Certificate of Achievement
-                </span>
-                <Award className="h-8 w-8 text-xp" />
-              </div>
-            </div>
+          {/* Watermark Pattern */}
+          <div 
+            className="absolute inset-0 opacity-[0.03]"
+            style={{
+              backgroundImage: `repeating-linear-gradient(45deg, #1a365d 0, #1a365d 1px, transparent 0, transparent 50%)`,
+              backgroundSize: '20px 20px'
+            }}
+          />
 
-            {/* Logo */}
-            <div className="py-4">
+          {/* Content */}
+          <div className="relative z-10 h-full flex flex-col items-center justify-between py-10 px-12">
+            {/* Header Section */}
+            <div className="text-center space-y-2">
               <h1 
-                className="text-5xl font-black tracking-wider"
-                style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  background: 'linear-gradient(135deg, hsl(185 100% 50%), hsl(200 100% 60%))',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  textShadow: '0 0 40px hsl(185 100% 50% / 0.3)',
-                }}
+                className="text-4xl md:text-5xl font-bold tracking-wider text-[#1a365d]"
+                style={{ fontFamily: "'Georgia', serif", letterSpacing: '0.15em' }}
               >
                 CODEQUEST
               </h1>
-            </div>
-
-            {/* Recipient */}
-            <div className="space-y-2">
-              <p className="text-muted-foreground text-sm uppercase tracking-wider">
-                This is to certify that
-              </p>
-              <div className="relative inline-block px-12 py-2">
-                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gradient-to-r from-transparent via-foreground/30 to-transparent" />
-                <h2 
-                  className="text-4xl font-bold text-foreground relative z-10"
-                  style={{
-                    fontFamily: "'Orbitron', sans-serif",
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  {userName}
-                </h2>
+              <div className="flex items-center justify-center gap-4">
+                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#c9a227]" />
+                <span className="text-xs uppercase tracking-[0.3em] text-[#666] font-semibold">
+                  Academy of Excellence
+                </span>
+                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#c9a227]" />
               </div>
             </div>
 
-            {/* Achievement */}
-            <div className="space-y-3">
-              <p className="text-muted-foreground">
-                has successfully completed all levels and demonstrated proficiency in
+            {/* Certificate Title */}
+            <div className="text-center -mt-4">
+              <h2 
+                className="text-2xl md:text-3xl uppercase tracking-[0.2em] text-[#1a365d] font-normal"
+                style={{ fontFamily: "'Georgia', serif" }}
+              >
+                Certificate of Completion
+              </h2>
+              <div className="mt-2 h-1 w-48 mx-auto bg-gradient-to-r from-transparent via-[#c9a227] to-transparent" />
+            </div>
+
+            {/* Main Content */}
+            <div className="text-center space-y-4 max-w-2xl">
+              <p className="text-sm text-[#555] italic">
+                This is to certify that
               </p>
-              <div className="inline-block px-8 py-3 rounded-lg bg-gradient-to-r from-primary/20 to-secondary/20 border border-primary/30">
+              
+              {/* Recipient Name */}
+              <div className="relative py-2">
+                <h3 
+                  className="text-3xl md:text-4xl font-bold text-[#1a365d]"
+                  style={{ fontFamily: "'Georgia', serif" }}
+                >
+                  {userName}
+                </h3>
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-px bg-[#1a365d]" />
+              </div>
+
+              <p className="text-sm text-[#555] leading-relaxed">
+                has successfully completed the comprehensive training program and demonstrated
+                <br />outstanding proficiency in
+              </p>
+
+              {/* Course Name */}
+              <div className="inline-block px-8 py-3 border-2 border-[#c9a227] bg-[#faf8f0]">
                 <span 
-                  className="text-3xl font-bold"
-                  style={{
-                    fontFamily: "'Orbitron', sans-serif",
-                    background: 'linear-gradient(135deg, hsl(45 100% 55%), hsl(35 100% 50%))',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
+                  className="text-2xl md:text-3xl font-bold text-[#1a365d] uppercase tracking-wider"
+                  style={{ fontFamily: "'Georgia', serif" }}
                 >
                   {languageNames[language]}
                 </span>
               </div>
+
+              <p className="text-xs text-[#666] max-w-lg mx-auto leading-relaxed">
+                This certification is awarded in recognition of exceptional dedication, 
+                skill mastery, and commitment to professional development.
+              </p>
             </div>
 
-            {/* Date & Signature */}
-            <div className="pt-8 flex items-end justify-between px-8">
-              <div className="text-left">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  Date of Completion
-                </p>
-                <p className="text-sm text-foreground font-medium">
-                  {completionDate.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
-              </div>
+            {/* Footer Section - Signatures */}
+            <div className="w-full">
+              <div className="flex items-end justify-between px-8">
+                {/* Date */}
+                <div className="text-center">
+                  <p className="text-sm text-[#1a365d] font-medium mb-1">
+                    {completionDate.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                  <div className="w-32 h-px bg-[#1a365d] mb-1" />
+                  <p className="text-xs uppercase tracking-wider text-[#666]">
+                    Date of Issue
+                  </p>
+                </div>
 
-              <div className="text-center">
-                <div className="relative inline-block">
+                {/* Seal */}
+                <div className="flex flex-col items-center -mt-4">
                   <div 
-                    className="text-4xl mb-0 italic"
-                    style={{
-                      fontFamily: "'Brush Script MT', 'Segoe Script', cursive",
-                      background: 'linear-gradient(135deg, hsl(270 80% 60%), hsl(320 90% 55%))',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      textShadow: '0 2px 20px hsl(270 80% 60% / 0.4)',
-                    }}
+                    className="w-20 h-20 rounded-full border-4 border-[#c9a227] flex items-center justify-center bg-white"
+                    style={{ boxShadow: '0 4px 15px rgba(201, 162, 39, 0.3)' }}
+                  >
+                    <div className="w-16 h-16 rounded-full border-2 border-[#1a365d] flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-[10px] font-bold text-[#1a365d] uppercase tracking-wider block">Verified</span>
+                        <span className="text-[8px] text-[#666]">Official</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[8px] text-[#999] mt-1 font-mono">{certificateId}</p>
+                </div>
+
+                {/* Signature */}
+                <div className="text-center">
+                  <p 
+                    className="text-3xl text-[#1a365d] mb-1"
+                    style={{ fontFamily: "'Brush Script MT', 'Segoe Script', cursive" }}
                   >
                     HSAN
-                  </div>
-                  <div className="w-36 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent mx-auto" />
-                  <p className="text-xs text-muted-foreground uppercase tracking-[0.2em] mt-2 font-medium">
+                  </p>
+                  <div className="w-32 h-px bg-[#1a365d] mb-1" />
+                  <p className="text-xs uppercase tracking-wider text-[#666]">
                     CEO & Founder
                   </p>
                 </div>
-              </div>
-
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  Certificate ID
-                </p>
-                <p className="text-sm text-foreground font-mono">
-                  CQ-{language.toUpperCase()}-{Date.now().toString(36).toUpperCase()}
-                </p>
-              </div>
-            </div>
-
-            {/* Seal */}
-            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-20 h-20 rounded-full border-2 border-xp/50 flex items-center justify-center bg-background/50">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-xp to-warning flex items-center justify-center">
-                <span className="text-xs font-bold text-xp-foreground font-display">VERIFIED</span>
               </div>
             </div>
           </div>

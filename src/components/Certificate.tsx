@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Share2, FileImage, FileText, ChevronDown } from 'lucide-react';
+import { Download, Share2, FileImage, FileText, ChevronDown, Palette } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -17,6 +17,36 @@ interface CertificateProps {
   onClose?: () => void;
 }
 
+type ThemeKey = 'blue' | 'green' | 'gold';
+
+interface ThemeColors {
+  primary: string;
+  accent: string;
+  bgAccent: string;
+  name: string;
+}
+
+const themes: Record<ThemeKey, ThemeColors> = {
+  blue: {
+    primary: '#1a365d',
+    accent: '#c9a227',
+    bgAccent: '#faf8f0',
+    name: 'Classic Blue',
+  },
+  green: {
+    primary: '#1a4d3e',
+    accent: '#d4af37',
+    bgAccent: '#f0faf5',
+    name: 'Emerald Green',
+  },
+  gold: {
+    primary: '#5c4d1f',
+    accent: '#b8860b',
+    bgAccent: '#fffbf0',
+    name: 'Royal Gold',
+  },
+};
+
 const languageNames: Record<string, string> = {
   html: 'HTML',
   css: 'CSS',
@@ -29,7 +59,10 @@ const languageNames: Record<string, string> = {
 export function Certificate({ userName, language, completionDate, onClose }: CertificateProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState<ThemeKey>('blue');
   const certificateId = `CQ-${language.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+  
+  const theme = themes[selectedTheme];
 
   const generateCanvas = async () => {
     if (!certificateRef.current) return null;
@@ -155,20 +188,20 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
           }}
         >
           {/* Outer Border */}
-          <div className="absolute inset-3 border-2 border-[#1a365d]" />
-          <div className="absolute inset-5 border border-[#c9a227]" />
+          <div className="absolute inset-3 border-2" style={{ borderColor: theme.primary }} />
+          <div className="absolute inset-5 border" style={{ borderColor: theme.accent }} />
           
           {/* Corner Ornaments */}
-          <div className="absolute top-6 left-6 w-12 h-12 border-l-4 border-t-4 border-[#1a365d]" />
-          <div className="absolute top-6 right-6 w-12 h-12 border-r-4 border-t-4 border-[#1a365d]" />
-          <div className="absolute bottom-6 left-6 w-12 h-12 border-l-4 border-b-4 border-[#1a365d]" />
-          <div className="absolute bottom-6 right-6 w-12 h-12 border-r-4 border-b-4 border-[#1a365d]" />
+          <div className="absolute top-6 left-6 w-12 h-12 border-l-4 border-t-4" style={{ borderColor: theme.primary }} />
+          <div className="absolute top-6 right-6 w-12 h-12 border-r-4 border-t-4" style={{ borderColor: theme.primary }} />
+          <div className="absolute bottom-6 left-6 w-12 h-12 border-l-4 border-b-4" style={{ borderColor: theme.primary }} />
+          <div className="absolute bottom-6 right-6 w-12 h-12 border-r-4 border-b-4" style={{ borderColor: theme.primary }} />
 
           {/* Watermark Pattern */}
           <div 
             className="absolute inset-0 opacity-[0.03]"
             style={{
-              backgroundImage: `repeating-linear-gradient(45deg, #1a365d 0, #1a365d 1px, transparent 0, transparent 50%)`,
+              backgroundImage: `repeating-linear-gradient(45deg, ${theme.primary} 0, ${theme.primary} 1px, transparent 0, transparent 50%)`,
               backgroundSize: '20px 20px'
             }}
           />
@@ -178,29 +211,29 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
             {/* Header Section */}
             <div className="text-center space-y-2">
               <h1 
-                className="text-4xl md:text-5xl font-bold tracking-wider text-[#1a365d]"
-                style={{ fontFamily: "'Georgia', serif", letterSpacing: '0.15em' }}
+                className="text-4xl md:text-5xl font-bold tracking-wider"
+                style={{ fontFamily: "'Georgia', serif", letterSpacing: '0.15em', color: theme.primary }}
               >
                 CODEQUEST
               </h1>
               <div className="flex items-center justify-center gap-4">
-                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#c9a227]" />
+                <div className="h-px w-16" style={{ background: `linear-gradient(to right, transparent, ${theme.accent})` }} />
                 <span className="text-xs uppercase tracking-[0.3em] text-[#666] font-semibold">
                   Academy of Excellence
                 </span>
-                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#c9a227]" />
+                <div className="h-px w-16" style={{ background: `linear-gradient(to left, transparent, ${theme.accent})` }} />
               </div>
             </div>
 
             {/* Certificate Title */}
             <div className="text-center -mt-4">
               <h2 
-                className="text-2xl md:text-3xl uppercase tracking-[0.2em] text-[#1a365d] font-normal"
-                style={{ fontFamily: "'Georgia', serif" }}
+                className="text-2xl md:text-3xl uppercase tracking-[0.2em] font-normal"
+                style={{ fontFamily: "'Georgia', serif", color: theme.primary }}
               >
                 Certificate of Completion
               </h2>
-              <div className="mt-2 h-1 w-48 mx-auto bg-gradient-to-r from-transparent via-[#c9a227] to-transparent" />
+              <div className="mt-2 h-1 w-48 mx-auto" style={{ background: `linear-gradient(to right, transparent, ${theme.accent}, transparent)` }} />
             </div>
 
             {/* Main Content */}
@@ -212,12 +245,12 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               {/* Recipient Name */}
               <div className="relative py-2">
                 <h3 
-                  className="text-3xl md:text-4xl font-bold text-[#1a365d]"
-                  style={{ fontFamily: "'Georgia', serif" }}
+                  className="text-3xl md:text-4xl font-bold"
+                  style={{ fontFamily: "'Georgia', serif", color: theme.primary }}
                 >
                   {userName}
                 </h3>
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-px bg-[#1a365d]" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-px" style={{ backgroundColor: theme.primary }} />
               </div>
 
               <p className="text-sm text-[#555] leading-relaxed">
@@ -226,10 +259,10 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               </p>
 
               {/* Course Name */}
-              <div className="inline-block px-8 py-3 border-2 border-[#c9a227] bg-[#faf8f0]">
+              <div className="inline-block px-8 py-3 border-2" style={{ borderColor: theme.accent, backgroundColor: theme.bgAccent }}>
                 <span 
-                  className="text-2xl md:text-3xl font-bold text-[#1a365d] uppercase tracking-wider"
-                  style={{ fontFamily: "'Georgia', serif" }}
+                  className="text-2xl md:text-3xl font-bold uppercase tracking-wider"
+                  style={{ fontFamily: "'Georgia', serif", color: theme.primary }}
                 >
                   {languageNames[language]}
                 </span>
@@ -246,14 +279,14 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
               <div className="flex items-end justify-between px-8">
                 {/* Date */}
                 <div className="text-center">
-                  <p className="text-sm text-[#1a365d] font-medium mb-1">
+                  <p className="text-sm font-medium mb-1" style={{ color: theme.primary }}>
                     {completionDate.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
                     })}
                   </p>
-                  <div className="w-32 h-px bg-[#1a365d] mb-1" />
+                  <div className="w-32 h-px mb-1" style={{ backgroundColor: theme.primary }} />
                   <p className="text-xs uppercase tracking-wider text-[#666]">
                     Date of Issue
                   </p>
@@ -262,12 +295,12 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
                 {/* Seal */}
                 <div className="flex flex-col items-center -mt-4">
                   <div 
-                    className="w-20 h-20 rounded-full border-4 border-[#c9a227] flex items-center justify-center bg-white"
-                    style={{ boxShadow: '0 4px 15px rgba(201, 162, 39, 0.3)' }}
+                    className="w-20 h-20 rounded-full border-4 flex items-center justify-center bg-white"
+                    style={{ borderColor: theme.accent, boxShadow: `0 4px 15px ${theme.accent}4d` }}
                   >
-                    <div className="w-16 h-16 rounded-full border-2 border-[#1a365d] flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-full border-2 flex items-center justify-center" style={{ borderColor: theme.primary }}>
                       <div className="text-center">
-                        <span className="text-[10px] font-bold text-[#1a365d] uppercase tracking-wider block">Verified</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider block" style={{ color: theme.primary }}>Verified</span>
                         <span className="text-[8px] text-[#666]">Official</span>
                       </div>
                     </div>
@@ -278,12 +311,12 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
                 {/* Signature */}
                 <div className="text-center">
                   <p 
-                    className="text-3xl text-[#1a365d] mb-1"
-                    style={{ fontFamily: "'Brush Script MT', 'Segoe Script', cursive" }}
+                    className="text-3xl mb-1"
+                    style={{ fontFamily: "'Brush Script MT', 'Segoe Script', cursive", color: theme.primary }}
                   >
                     HSAN
                   </p>
-                  <div className="w-32 h-px bg-[#1a365d] mb-1" />
+                  <div className="w-32 h-px mb-1" style={{ backgroundColor: theme.primary }} />
                   <p className="text-xs uppercase tracking-wider text-[#666]">
                     CEO & Founder
                   </p>
@@ -294,10 +327,38 @@ export function Certificate({ userName, language, completionDate, onClose }: Cer
         </div>
 
         {/* Actions */}
-        <Card variant="gaming" className="p-4 flex items-center justify-between">
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
+        <Card variant="gaming" className="p-4 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+            {/* Theme Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Palette className="h-4 w-4 mr-2" />
+                  {themes[selectedTheme].name}
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {(Object.keys(themes) as ThemeKey[]).map((key) => (
+                  <DropdownMenuItem 
+                    key={key} 
+                    onClick={() => setSelectedTheme(key)}
+                    className="flex items-center gap-2"
+                  >
+                    <div 
+                      className="w-4 h-4 rounded-full border"
+                      style={{ backgroundColor: themes[key].primary, borderColor: themes[key].accent }}
+                    />
+                    {themes[key].name}
+                    {selectedTheme === key && <span className="ml-auto">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={handleShare}>
               <Share2 className="h-4 w-4 mr-2" />

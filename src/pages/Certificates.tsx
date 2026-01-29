@@ -8,8 +8,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile, useUserLevelProgress } from '@/hooks/useUserProgress';
 import { levels } from '@/data/levels';
 import { LANGUAGE_LEVELS } from '@/types/game';
-import { Award, Lock, CheckCircle2, Sparkles } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import { Award, Lock, CheckCircle2, Sparkles, Gamepad2, Zap, Target, Trophy, Code2 } from 'lucide-react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import type { Language } from '@/types/game';
 
 const Certificates = () => {
@@ -17,6 +17,7 @@ const Certificates = () => {
   const { data: profile } = useUserProfile();
   const { data: levelProgress } = useUserLevelProgress();
   const [selectedCertificate, setSelectedCertificate] = useState<Language | null>(null);
+  const navigate = useNavigate();
 
   if (authLoading) {
     return (
@@ -51,6 +52,45 @@ const Certificates = () => {
       progress,
     };
   });
+
+  const gamingOptions = [
+    {
+      icon: <Zap className="h-8 w-8" />,
+      title: "Quiz Battle",
+      description: "Test your knowledge with timed MCQs and compete for high scores",
+      color: "from-primary to-secondary",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Target className="h-8 w-8" />,
+      title: "Code Runner",
+      description: "Dodge wrong answers and collect correct syntax in this interactive game",
+      color: "from-xp to-xp/70",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Gamepad2 className="h-8 w-8" />,
+      title: "Code Puzzle",
+      description: "Solve fill-in-the-blanks, drag-and-drop, and bug-fix challenges",
+      color: "from-success to-success/70",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Trophy className="h-8 w-8" />,
+      title: "Leaderboard",
+      description: "See how you rank against other coders and climb to the top",
+      color: "from-secondary to-primary",
+      action: () => navigate('/leaderboard'),
+    },
+  ];
+
+  const languageGameCards = Object.entries(LANGUAGE_LEVELS).map(([key, lang]) => ({
+    language: key as Language,
+    name: lang.name,
+    color: lang.color,
+    levelsCount: levels.filter(l => l.id >= lang.start && l.id <= lang.end).length,
+    startLevel: lang.start,
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -161,6 +201,81 @@ const Certificates = () => {
             </p>
           </div>
         </Card>
+
+        {/* Gaming Section */}
+        <div className="mt-16 space-y-8">
+          <div className="text-center">
+            <Badge variant="level" className="mb-4">
+              <Gamepad2 className="h-3 w-3 mr-1" />
+              Learn by Playing
+            </Badge>
+            <h2 className="font-display text-3xl md:text-4xl font-black text-foreground mb-4">
+              Master Coding Through <span className="text-gradient-primary">Games</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Make learning fun! Choose from different game modes and programming languages to practice your coding skills.
+            </p>
+          </div>
+
+          {/* Game Modes */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {gamingOptions.map((game) => (
+              <Card 
+                key={game.title} 
+                variant="gaming" 
+                className="p-5 cursor-pointer hover:scale-[1.02] transition-all duration-300 group"
+                onClick={game.action}
+              >
+                <div className={`h-14 w-14 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                  <div className="text-primary-foreground">{game.icon}</div>
+                </div>
+                <h3 className="font-display font-bold text-foreground mb-1">{game.title}</h3>
+                <p className="text-sm text-muted-foreground">{game.description}</p>
+                <Button variant="ghost" size="sm" className="mt-3 p-0 h-auto text-primary hover:text-primary/80">
+                  Play Now →
+                </Button>
+              </Card>
+            ))}
+          </div>
+
+          {/* Language Selection */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-center gap-2">
+              <Code2 className="h-5 w-5 text-primary" />
+              <h3 className="font-display text-xl font-bold text-foreground">
+                Choose Your Language
+              </h3>
+            </div>
+            <p className="text-center text-muted-foreground">
+              Select a programming language to start learning with interactive games
+            </p>
+            
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {languageGameCards.map((lang) => (
+                <Card 
+                  key={lang.language}
+                  variant="gaming" 
+                  className="p-5 cursor-pointer hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden"
+                  onClick={() => navigate(`/play?level=${lang.startLevel}`)}
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-br ${lang.color} opacity-5 group-hover:opacity-10 transition-opacity`} />
+                  <div className="relative z-10 flex items-center gap-4">
+                    <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${lang.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                      <Code2 className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-display font-bold text-foreground">{lang.name}</h4>
+                      <p className="text-sm text-muted-foreground">{lang.levelsCount} levels available</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-primary">
+                      Start →
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </div>
       </main>
 
       {/* Certificate Modal */}

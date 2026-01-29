@@ -1,10 +1,14 @@
 import { Navbar } from '@/components/Navbar';
-import { AITutor } from '@/components/AITutor';
+import { VoiceAITutor } from '@/components/VoiceAITutor';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Sparkles, MessageCircle, Volume2 } from 'lucide-react';
+import { Brain, Sparkles, Mic, Volume2, Gamepad2, Zap, Target, Trophy } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 const Tutor = () => {
+  const navigate = useNavigate();
+
   const tutorFeatures = [
     {
       icon: <Brain className="h-6 w-6" />,
@@ -17,14 +21,45 @@ const Tutor = () => {
       description: "Adapts explanations to your learning style",
     },
     {
-      icon: <MessageCircle className="h-6 w-6" />,
-      title: "Interactive",
-      description: "Ask questions and get instant responses",
+      icon: <Mic className="h-6 w-6" />,
+      title: "Voice Input",
+      description: "Just speak your questions naturally",
     },
     {
       icon: <Volume2 className="h-6 w-6" />,
-      title: "Voice Support",
+      title: "Voice Output",
       description: "Listen to explanations with text-to-speech",
+    },
+  ];
+
+  const gamingOptions = [
+    {
+      icon: <Zap className="h-8 w-8" />,
+      title: "Quiz Battle",
+      description: "Test your knowledge with timed MCQs and compete for high scores",
+      color: "from-primary to-secondary",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Target className="h-8 w-8" />,
+      title: "Code Runner",
+      description: "Dodge wrong answers and collect correct syntax in this interactive game",
+      color: "from-xp to-xp/70",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Gamepad2 className="h-8 w-8" />,
+      title: "Code Puzzle",
+      description: "Solve fill-in-the-blanks, drag-and-drop, and bug-fix challenges",
+      color: "from-success to-success/70",
+      action: () => navigate('/levels'),
+    },
+    {
+      icon: <Trophy className="h-8 w-8" />,
+      title: "Leaderboard",
+      description: "See how you rank against other coders and climb to the top",
+      color: "from-secondary to-primary",
+      action: () => navigate('/leaderboard'),
     },
   ];
 
@@ -34,7 +69,7 @@ const Tutor = () => {
       
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="grid lg:grid-cols-[1fr,450px] gap-8">
-          {/* Left Column - Info */}
+          {/* Left Column - Info & Gaming */}
           <div className="space-y-8">
             <div>
               <Badge variant="level" className="mb-4">
@@ -45,8 +80,8 @@ const Tutor = () => {
                 Your Personal <span className="text-gradient-primary">AI Tutor</span>
               </h1>
               <p className="text-xl text-muted-foreground">
-                Get instant help with any programming concept. Ask questions, request explanations, 
-                and learn at your own pace.
+                Get instant help with any programming concept using just your voice. 
+                Ask questions naturally and learn at your own pace.
               </p>
             </div>
 
@@ -65,37 +100,43 @@ const Tutor = () => {
               ))}
             </div>
 
-            {/* Suggested Topics */}
-            <Card variant="gaming" className="p-6">
-              <h3 className="font-display text-lg font-semibold text-foreground mb-4">
-                Suggested Topics
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  'HTML basics',
-                  'CSS flexbox',
-                  'JavaScript arrays',
-                  'DOM manipulation',
-                  'Data structures',
-                  'SQL queries',
-                  'Python functions',
-                  'OOP concepts',
-                ].map((topic) => (
-                  <Badge 
-                    key={topic} 
-                    variant="outline" 
-                    className="cursor-pointer hover:bg-muted transition-colors"
+            {/* Gaming Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Gamepad2 className="h-6 w-6 text-primary" />
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  Learn by Playing
+                </h2>
+              </div>
+              <p className="text-muted-foreground">
+                Make learning fun! Choose from different game modes to practice your coding skills.
+              </p>
+              
+              <div className="grid sm:grid-cols-2 gap-4">
+                {gamingOptions.map((game) => (
+                  <Card 
+                    key={game.title} 
+                    variant="gaming" 
+                    className="p-5 cursor-pointer hover:scale-[1.02] transition-all duration-300 group"
+                    onClick={game.action}
                   >
-                    {topic}
-                  </Badge>
+                    <div className={`h-14 w-14 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                      <div className="text-primary-foreground">{game.icon}</div>
+                    </div>
+                    <h3 className="font-display font-bold text-foreground mb-1">{game.title}</h3>
+                    <p className="text-sm text-muted-foreground">{game.description}</p>
+                    <Button variant="ghost" size="sm" className="mt-3 p-0 h-auto text-primary hover:text-primary/80">
+                      Play Now →
+                    </Button>
+                  </Card>
                 ))}
               </div>
-            </Card>
+            </div>
           </div>
 
-          {/* Right Column - Tutor */}
+          {/* Right Column - Voice Tutor */}
           <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-120px)]">
-            <AITutor />
+            <VoiceAITutor />
           </div>
         </div>
       </main>

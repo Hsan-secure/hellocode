@@ -2,39 +2,35 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Bot, Volume2, VolumeX, Sparkles, Loader2, Mic, MicOff } from 'lucide-react';
+import { Bot, Volume2, VolumeX, Sparkles, Loader2, Mic, MicOff, StopCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 // Type definition for SpeechRecognition
-interface SpeechRecognitionEvent {
+interface CustomSpeechRecognitionEvent {
   results: SpeechRecognitionResultList;
 }
 
-interface SpeechRecognitionErrorEvent {
+interface CustomSpeechRecognitionErrorEvent {
   error: string;
 }
 
-interface SpeechRecognitionInterface {
+interface CustomSpeechRecognitionInterface {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
   start: () => void;
   stop: () => void;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  abort: () => void;
+  onresult: ((event: CustomSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: CustomSpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognitionInterface;
-    webkitSpeechRecognition: new () => SpeechRecognitionInterface;
-  }
+  onspeechend: (() => void) | null;
 }
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-tutor`;
+const TTS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`;
 
 async function streamChat({
   messages,
@@ -111,6 +107,24 @@ async function streamChat({
   }
 }
 
+// Clean text for TTS - remove markdown, emojis, code blocks
+function cleanTextForTTS(text: string): string {
+  return text
+    // Remove code blocks
+    .replace(/```[\s\S]*?```/g, "I've included some code in my response.")
+    // Remove inline code
+    .replace(/`[^`]+`/g, "code snippet")
+    // Remove markdown links
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Remove markdown bold/italic
+    .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, "$1")
+    // Remove headers
+    .replace(/^#{1,6}\s*/gm, "")
+    // Clean up excessive whitespace
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function VoiceAITutor() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -119,47 +133,85 @@ export function VoiceAITutor() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
   const [pulseIntensity, setPulseIntensity] = useState(0);
-  const recognitionRef = useRef<SpeechRecognitionInterface | null>(null);
+  const [currentTranscript, setCurrentTranscript] = useState('');
+  const [lastResponse, setLastResponse] = useState('');
+  
+  const recognitionRef = useRef<CustomSpeechRecognitionInterface | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
-  // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognitionClass() as CustomSpeechRecognitionInterface;
+      recognitionRef.current = recognition;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
       recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setIsListening(false);
-        setCurrentStatus('processing');
-        handleSend(transcript);
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript;
+          } else {
+            interimTranscript += result[0].transcript;
+          }
+        }
+
+        setCurrentTranscript(finalTranscript || interimTranscript);
+      };
+
+      recognitionRef.current.onspeechend = () => {
+        // User stopped speaking, process the transcript
+        if (currentTranscript.trim()) {
+          recognitionRef.current?.stop();
+        }
       };
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          toast({
+            title: "Voice error",
+            description: "Could not recognize speech. Please try again.",
+            variant: "destructive",
+          });
+        }
         setIsListening(false);
         setCurrentStatus('idle');
-        toast({
-          title: "Voice error",
-          description: "Could not recognize speech. Please try again.",
-          variant: "destructive",
-        });
+        setCurrentTranscript('');
       };
 
       recognitionRef.current.onend = () => {
-        setIsListening(false);
-        if (currentStatus === 'listening') {
-          setCurrentStatus('idle');
+        const transcript = currentTranscript.trim();
+        if (transcript && isListening) {
+          setIsListening(false);
+          setCurrentStatus('processing');
+          handleSend(transcript);
+          setCurrentTranscript('');
+        } else {
+          setIsListening(false);
+          if (currentStatus === 'listening') {
+            setCurrentStatus('idle');
+          }
         }
       };
     }
-  }, []);
 
-  // Pulse animation for listening
+    return () => {
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+    };
+  }, [currentTranscript, isListening, currentStatus]);
+
+  // Pulse animation for listening/speaking
   useEffect(() => {
-    if (isListening) {
+    if (isListening || isSpeaking) {
       const interval = setInterval(() => {
         setPulseIntensity(prev => (prev + 1) % 100);
       }, 50);
@@ -167,33 +219,79 @@ export function VoiceAITutor() {
     } else {
       setPulseIntensity(0);
     }
-  }, [isListening]);
+  }, [isListening, isSpeaking]);
 
-  const speakText = useCallback((text: string) => {
-    if (!voiceEnabled || !('speechSynthesis' in window)) return;
+  // ElevenLabs TTS
+  const speakTextWithElevenLabs = useCallback(async (text: string) => {
+    if (!voiceEnabled) return;
 
-    window.speechSynthesis.cancel();
+    const cleanedText = cleanTextForTTS(text);
+    if (!cleanedText) return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    utterance.onstart = () => {
+    try {
       setIsSpeaking(true);
       setCurrentStatus('speaking');
-    };
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
-    };
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
-    };
 
-    window.speechSynthesis.speak(utterance);
+      const response = await fetch(TTS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ text: cleanedText }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed: ${response.status}`);
+      }
+
+      const audioBlob = await response.blob();
+      
+      // Clean up previous audio URL
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+
+      const audioUrl = URL.createObjectURL(audioBlob);
+      audioUrlRef.current = audioUrl;
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+      };
+
+      audio.onerror = () => {
+        console.error('Audio playback error');
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error('ElevenLabs TTS error:', error);
+      setIsSpeaking(false);
+      setCurrentStatus('idle');
+      toast({
+        title: "Voice error",
+        description: "Could not generate speech. Please try again.",
+        variant: "destructive",
+      });
+    }
   }, [voiceEnabled]);
+
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setIsSpeaking(false);
+    setCurrentStatus('idle');
+  }, []);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -209,12 +307,13 @@ export function VoiceAITutor() {
       recognitionRef.current.stop();
       setIsListening(false);
       setCurrentStatus('idle');
+      setCurrentTranscript('');
     } else {
       // Stop any ongoing speech
       if (isSpeaking) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
+        stopSpeaking();
       }
+      setCurrentTranscript('');
       recognitionRef.current.start();
       setIsListening(true);
       setCurrentStatus('listening');
@@ -223,9 +322,7 @@ export function VoiceAITutor() {
 
   const toggleVoice = () => {
     if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
+      stopSpeaking();
     }
     setVoiceEnabled(!voiceEnabled);
   };
@@ -245,12 +342,14 @@ export function VoiceAITutor() {
       messages: newChatHistory,
       onDelta: (chunk) => {
         assistantContent += chunk;
+        setLastResponse(assistantContent);
       },
       onDone: () => {
         setIsLoading(false);
         setChatHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
+        setLastResponse(assistantContent);
         if (voiceEnabled && assistantContent) {
-          speakText(assistantContent);
+          speakTextWithElevenLabs(assistantContent);
         } else {
           setCurrentStatus('idle');
         }
@@ -270,9 +369,9 @@ export function VoiceAITutor() {
   const getStatusText = () => {
     switch (currentStatus) {
       case 'listening':
-        return "I'm listening...";
+        return currentTranscript || "I'm listening...";
       case 'processing':
-        return "Processing your question...";
+        return "Thinking...";
       case 'speaking':
         return "Speaking...";
       default:
@@ -294,7 +393,7 @@ export function VoiceAITutor() {
   };
 
   return (
-    <Card variant="glow" className="flex flex-col h-[600px] items-center justify-center p-8">
+    <Card variant="glow" className="flex flex-col h-[600px] items-center justify-center p-8 relative">
       {/* Voice Toggle */}
       <div className="absolute top-4 right-4">
         <Button 
@@ -312,7 +411,7 @@ export function VoiceAITutor() {
       </div>
 
       {/* Central Voice Interface */}
-      <div className="flex flex-col items-center gap-8">
+      <div className="flex flex-col items-center gap-6">
         {/* AI Avatar with Pulse Effect */}
         <div className="relative">
           {/* Outer pulse rings */}
@@ -357,30 +456,52 @@ export function VoiceAITutor() {
           <h2 className="font-display text-2xl font-bold text-foreground mb-2">
             Voice AI Tutor
           </h2>
-          <p className="text-muted-foreground flex items-center gap-2 justify-center">
-            <Sparkles className="h-4 w-4 text-primary" />
-            {getStatusText()}
+          <p className="text-muted-foreground flex items-center gap-2 justify-center max-w-xs">
+            <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
+            <span className="truncate">{getStatusText()}</span>
           </p>
         </div>
 
-        {/* Microphone Button */}
-        <Button
-          variant={isListening ? "destructive" : "hero"}
-          size="lg"
-          onClick={toggleListening}
-          disabled={isLoading || isSpeaking}
-          className={cn(
-            "h-20 w-20 rounded-full transition-all duration-300",
-            isListening && "animate-pulse scale-110",
-            "shadow-lg hover:shadow-xl"
+        {/* Buttons */}
+        <div className="flex items-center gap-4">
+          {/* Stop Button (when speaking) */}
+          {isSpeaking && (
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={stopSpeaking}
+              className="h-14 w-14 rounded-full"
+            >
+              <StopCircle className="h-6 w-6 text-destructive" />
+            </Button>
           )}
-        >
-          {isListening ? (
-            <MicOff className="h-8 w-8" />
-          ) : (
-            <Mic className="h-8 w-8" />
-          )}
-        </Button>
+
+          {/* Microphone Button */}
+          <Button
+            variant={isListening ? "destructive" : "hero"}
+            size="lg"
+            onClick={toggleListening}
+            disabled={isLoading || isSpeaking}
+            className={cn(
+              "h-20 w-20 rounded-full transition-all duration-300",
+              isListening && "animate-pulse scale-110",
+              "shadow-lg hover:shadow-xl"
+            )}
+          >
+            {isListening ? (
+              <MicOff className="h-8 w-8" />
+            ) : (
+              <Mic className="h-8 w-8" />
+            )}
+          </Button>
+        </div>
+
+        {/* Live Transcript (when listening) */}
+        {isListening && currentTranscript && (
+          <div className="bg-muted/50 rounded-lg px-4 py-2 max-w-xs animate-fade-in">
+            <p className="text-sm text-foreground italic">"{currentTranscript}"</p>
+          </div>
+        )}
 
         {/* Quick Tips */}
         <div className="text-center max-w-xs">

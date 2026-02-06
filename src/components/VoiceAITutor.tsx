@@ -48,6 +48,7 @@ async function streamChat({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
       },
       body: JSON.stringify({ messages }),
@@ -139,6 +140,9 @@ export function VoiceAITutor() {
   const recognitionRef = useRef<CustomSpeechRecognitionInterface | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioGainRef = useRef<GainNode | null>(null);
 
   const transcriptRef = useRef<string>('');
   const isListeningRef = useRef<boolean>(false);
@@ -241,8 +245,44 @@ export function VoiceAITutor() {
     }
 
     return () => {
+      // Stop any playing audio
+      try {
+        audioRef.current?.pause();
+      } catch {
+        // ignore
+      }
+
+      if (audioSourceRef.current) {
+        try {
+          audioSourceRef.current.stop();
+        } catch {
+          // ignore
+        }
+        try {
+          audioSourceRef.current.disconnect();
+        } catch {
+          // ignore
+        }
+        audioSourceRef.current = null;
+      }
+
+      if (audioGainRef.current) {
+        try {
+          audioGainRef.current.disconnect();
+        } catch {
+          // ignore
+        }
+        audioGainRef.current = null;
+      }
+
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+
+      if (audioContextRef.current) {
+        void audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
       }
     };
   }, []);
@@ -259,6 +299,47 @@ export function VoiceAITutor() {
     }
   }, [isListening, isSpeaking]);
 
+  const ensureAudioContextReady = useCallback(async (): Promise<AudioContext | null> => {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
+  }, []);
+
+  const stopWebAudio = useCallback(() => {
+    if (audioSourceRef.current) {
+      try {
+        audioSourceRef.current.onended = null;
+        audioSourceRef.current.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        audioSourceRef.current.disconnect();
+      } catch {
+        // ignore
+      }
+      audioSourceRef.current = null;
+    }
+
+    if (audioGainRef.current) {
+      try {
+        audioGainRef.current.disconnect();
+      } catch {
+        // ignore
+      }
+      audioGainRef.current = null;
+    }
+  }, []);
+
   // ElevenLabs TTS
   const speakTextWithElevenLabs = useCallback(async (text: string) => {
     if (!voiceEnabled) return;
@@ -269,6 +350,18 @@ export function VoiceAITutor() {
     try {
       setIsSpeaking(true);
       setCurrentStatus('speaking');
+
+      // Stop anything already playing
+      stopWebAudio();
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch {
+          // ignore
+        }
+        audioRef.current = null;
+      }
 
       const response = await fetch(TTS_URL, {
         method: "POST",
@@ -284,9 +377,36 @@ export function VoiceAITutor() {
         throw new Error(`TTS request failed: ${response.status}`);
       }
 
-      const audioBlob = await response.blob();
-      
-      // Clean up previous audio URL
+      // Prefer WebAudio playback (more reliable vs autoplay policies)
+      const audioBytes = await response.arrayBuffer();
+      const audioContext = await ensureAudioContextReady();
+      if (audioContext) {
+        const decoded = await audioContext.decodeAudioData(audioBytes.slice(0));
+
+        const source = audioContext.createBufferSource();
+        const gain = audioContext.createGain();
+        gain.gain.value = 1;
+
+        source.buffer = decoded;
+        source.connect(gain);
+        gain.connect(audioContext.destination);
+
+        audioSourceRef.current = source;
+        audioGainRef.current = gain;
+
+        source.onended = () => {
+          setIsSpeaking(false);
+          setCurrentStatus('idle');
+          audioSourceRef.current = null;
+        };
+
+        source.start(0);
+        return;
+      }
+
+      // Fallback: HTMLAudioElement
+      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
@@ -295,6 +415,7 @@ export function VoiceAITutor() {
       audioUrlRef.current = audioUrl;
 
       const audio = new Audio(audioUrl);
+      audio.volume = 1;
       audioRef.current = audio;
 
       audio.onended = () => {
@@ -308,28 +429,46 @@ export function VoiceAITutor() {
         setCurrentStatus('idle');
       };
 
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (err) {
+        console.error('Audio play blocked:', err);
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+        toast({
+          title: 'Audio blocked by browser',
+          description: 'Tap the microphone once, then try again (some browsers block auto-play audio).',
+          variant: 'destructive',
+        });
+      }
     } catch (error) {
       console.error('ElevenLabs TTS error:', error);
       setIsSpeaking(false);
       setCurrentStatus('idle');
       toast({
         title: "Voice error",
-        description: "Could not generate speech. Please try again.",
+        description: "Could not play the voice response. Please try again.",
         variant: "destructive",
       });
     }
-  }, [voiceEnabled]);
+  }, [ensureAudioContextReady, stopWebAudio, voiceEnabled]);
 
   const stopSpeaking = useCallback(() => {
+    stopWebAudio();
+
     if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      } catch {
+        // ignore
+      }
       audioRef.current = null;
     }
+
     setIsSpeaking(false);
     setCurrentStatus('idle');
-  }, []);
+  }, [stopWebAudio]);
 
   const requestMicrophonePermission = async (): Promise<boolean> => {
     try {
@@ -372,6 +511,13 @@ export function VoiceAITutor() {
       if (micPermission !== 'granted') {
         const granted = await requestMicrophonePermission();
         if (!granted) return;
+      }
+
+      // Unlock audio early (helps with strict mobile autoplay policies)
+      try {
+        await ensureAudioContextReady();
+      } catch {
+        // ignore
       }
 
       // Stop any ongoing speech

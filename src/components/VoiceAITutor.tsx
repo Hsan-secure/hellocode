@@ -140,16 +140,47 @@ export function VoiceAITutor() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
+  const transcriptRef = useRef<string>('');
+  const isListeningRef = useRef<boolean>(false);
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
+
+  // Update refs when state changes
+  useEffect(() => {
+    transcriptRef.current = currentTranscript;
+  }, [currentTranscript]);
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  // Check microphone permission on mount
+  useEffect(() => {
+    const checkPermission = async () => {
+      try {
+        const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
+        result.onchange = () => {
+          setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
+        };
+      } catch {
+        // Permissions API not supported, will check on first use
+        setMicPermission('unknown');
+      }
+    };
+    checkPermission();
+  }, []);
+
+  // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognitionClass() as CustomSpeechRecognitionInterface;
       recognitionRef.current = recognition;
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-      recognitionRef.current.onresult = (event) => {
+      recognition.onresult = (event) => {
         let finalTranscript = '';
         let interimTranscript = '';
 
@@ -162,42 +193,49 @@ export function VoiceAITutor() {
           }
         }
 
-        setCurrentTranscript(finalTranscript || interimTranscript);
+        const transcript = finalTranscript || interimTranscript;
+        setCurrentTranscript(transcript);
+        transcriptRef.current = transcript;
       };
 
-      recognitionRef.current.onspeechend = () => {
-        // User stopped speaking, process the transcript
-        if (currentTranscript.trim()) {
-          recognitionRef.current?.stop();
-        }
-      };
-
-      recognitionRef.current.onerror = (event) => {
+      recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        
+        if (event.error === 'not-allowed') {
+          setMicPermission('denied');
+          toast({
+            title: "Microphone access denied",
+            description: "Please allow microphone access in your browser settings to use voice features.",
+            variant: "destructive",
+          });
+        } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
           toast({
             title: "Voice error",
             description: "Could not recognize speech. Please try again.",
             variant: "destructive",
           });
         }
+        
         setIsListening(false);
+        isListeningRef.current = false;
         setCurrentStatus('idle');
         setCurrentTranscript('');
       };
 
-      recognitionRef.current.onend = () => {
-        const transcript = currentTranscript.trim();
-        if (transcript && isListening) {
-          setIsListening(false);
+      recognition.onend = () => {
+        const transcript = transcriptRef.current.trim();
+        const wasListening = isListeningRef.current;
+        
+        setIsListening(false);
+        isListeningRef.current = false;
+        
+        if (transcript && wasListening) {
           setCurrentStatus('processing');
           handleSend(transcript);
           setCurrentTranscript('');
+          transcriptRef.current = '';
         } else {
-          setIsListening(false);
-          if (currentStatus === 'listening') {
-            setCurrentStatus('idle');
-          }
+          setCurrentStatus('idle');
         }
       };
     }
@@ -207,7 +245,7 @@ export function VoiceAITutor() {
         URL.revokeObjectURL(audioUrlRef.current);
       }
     };
-  }, [currentTranscript, isListening, currentStatus]);
+  }, []);
 
   // Pulse animation for listening/speaking
   useEffect(() => {
@@ -293,7 +331,26 @@ export function VoiceAITutor() {
     setCurrentStatus('idle');
   }, []);
 
-  const toggleListening = () => {
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop the stream immediately, we just needed permission
+      stream.getTracks().forEach(track => track.stop());
+      setMicPermission('granted');
+      return true;
+    } catch (error) {
+      console.error('Microphone permission error:', error);
+      setMicPermission('denied');
+      toast({
+        title: "Microphone access required",
+        description: "Please allow microphone access to use voice features. Check your browser settings.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const toggleListening = async () => {
     if (!recognitionRef.current) {
       toast({
         title: "Voice not supported",
@@ -306,17 +363,38 @@ export function VoiceAITutor() {
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
+      isListeningRef.current = false;
       setCurrentStatus('idle');
       setCurrentTranscript('');
+      transcriptRef.current = '';
     } else {
+      // Request microphone permission first
+      if (micPermission !== 'granted') {
+        const granted = await requestMicrophonePermission();
+        if (!granted) return;
+      }
+
       // Stop any ongoing speech
       if (isSpeaking) {
         stopSpeaking();
       }
+      
       setCurrentTranscript('');
-      recognitionRef.current.start();
-      setIsListening(true);
-      setCurrentStatus('listening');
+      transcriptRef.current = '';
+      
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        isListeningRef.current = true;
+        setCurrentStatus('listening');
+      } catch (error) {
+        console.error('Failed to start recognition:', error);
+        toast({
+          title: "Voice error",
+          description: "Could not start voice recognition. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
 

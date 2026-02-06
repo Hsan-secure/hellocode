@@ -5,8 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Sarah - Natural female voice, warm and friendly
-const VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+// Devi - Indian female voice, encouraging and motivating (Hindi/Indian accent)
+// Perfect for multilingual responses including Hindi, Telugu, and other Indian languages
+const VOICE_ID = "xcqGhEJArMVysFjVZXO6";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -37,7 +38,8 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           text,
-          model_id: "eleven_turbo_v2_5",
+          // Use multilingual v2 model for best Hindi/Telugu/multilingual support
+          model_id: "eleven_multilingual_v2",
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,

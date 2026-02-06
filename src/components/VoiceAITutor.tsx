@@ -32,6 +32,31 @@ type ChatMessage = { role: 'user' | 'assistant'; content: string };
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-tutor`;
 const TTS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`;
 
+// System prompt for multilingual support
+const MULTILINGUAL_SYSTEM_PROMPT = `You are CodeQuest AI Tutor - a friendly, encouraging, and expert coding tutor who speaks multiple languages.
+
+CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE that the user speaks to you.
+- If the user asks in Hindi, respond entirely in Hindi
+- If the user asks in Telugu, respond entirely in Telugu  
+- If the user asks in Tamil, respond entirely in Tamil
+- If the user asks in English, respond in English
+- For any other language, match the user's language
+
+Your role is to:
+1. Explain programming concepts clearly and simply
+2. Use analogies and real-world examples
+3. Provide code examples when helpful (code stays in English)
+4. Encourage learners and celebrate progress
+5. Answer questions about HTML, CSS, JavaScript, Python, Data Structures, and DBMS
+
+Guidelines:
+- Be warm and supportive - use emojis occasionally 😊
+- Keep explanations concise but thorough
+- If showing code, use proper formatting with backticks
+- Always be patient and never condescending
+
+Remember: Detect the user's language and respond in that same language!`;
+
 async function streamChat({
   messages,
   onDelta,
@@ -44,6 +69,12 @@ async function streamChat({
   onError: (error: string) => void;
 }) {
   try {
+    // Prepend the multilingual system message
+    const messagesWithSystem = [
+      { role: 'system' as const, content: MULTILINGUAL_SYSTEM_PROMPT },
+      ...messages
+    ];
+    
     const resp = await fetch(CHAT_URL, {
       method: "POST",
       headers: {
@@ -51,7 +82,7 @@ async function streamChat({
         apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
       },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages: messagesWithSystem }),
     });
 
     if (!resp.ok) {
@@ -174,7 +205,7 @@ export function VoiceAITutor() {
     checkPermission();
   }, []);
 
-  // Initialize speech recognition
+  // Initialize speech recognition with multilingual support
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -182,7 +213,10 @@ export function VoiceAITutor() {
       recognitionRef.current = recognition;
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      
+      // Empty string allows automatic language detection for multilingual support
+      // This enables Hindi, Telugu, Tamil, and other languages to be recognized
+      recognition.lang = '';
 
       recognition.onresult = (event) => {
         let finalTranscript = '';
@@ -730,7 +764,7 @@ export function VoiceAITutor() {
         {/* Quick Tips */}
         <div className="text-center max-w-xs">
           <p className="text-xs text-muted-foreground">
-            Ask about any programming topic: HTML, CSS, JavaScript, Python, Data Structures, and more!
+            Ask in any language - Hindi, Telugu, Tamil, English & more! Questions about HTML, CSS, JavaScript, Python, and Data Structures.
           </p>
         </div>
       </div>

@@ -15,6 +15,7 @@ import Signup from "./pages/Signup";
 import Certificates from "./pages/Certificates";
 import LearnFirst from "./pages/LearnFirst";
 import Playtime from "./pages/Playtime";
+import Tryout from "./pages/Tryout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/certificates" element={<Certificates />} />
             <Route path="/learn" element={<LearnFirst />} />
             <Route path="/playtime" element={<Playtime />} />
+            <Route path="/tryout" element={<Tryout />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

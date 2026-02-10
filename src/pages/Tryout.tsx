@@ -189,15 +189,16 @@ const Tryout = () => {
   const [language, setLanguage] = useState<SupportedLanguage>('javascript');
   const [code, setCode] = useState(LANGUAGE_CONFIG.javascript.defaultCode);
   const [output, setOutput] = useState<string[]>([]);
+  const [previewHtml, setPreviewHtml] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     setLanguage(lang);
     setCode(LANGUAGE_CONFIG[lang].defaultCode);
     setOutput([]);
+    setPreviewHtml('');
   };
 
   const runCode = useCallback(() => {
@@ -206,19 +207,8 @@ const Tryout = () => {
 
     setTimeout(() => {
       if (language === 'html' || language === 'css') {
-        // Show preview first, then write to iframe after render
+        setPreviewHtml(code);
         setOutput(['✅ Rendered successfully! See the preview below.']);
-        // Use a short delay to ensure iframe is mounted before writing
-        setTimeout(() => {
-          if (iframeRef.current) {
-            const doc = iframeRef.current.contentDocument;
-            if (doc) {
-              doc.open();
-              doc.write(code);
-              doc.close();
-            }
-          }
-        }, 100);
       } else if (language === 'javascript') {
         const logs: string[] = [];
         const originalLog = console.log;
@@ -369,14 +359,14 @@ const Tryout = () => {
             />
           </Card>
 
-          {/* HTML/CSS Preview - always mounted when language is html/css */}
-          {(language === 'html' || language === 'css') && (
-            <Card className={`overflow-hidden border-2 border-border ${output.length === 0 ? 'hidden' : ''}`}>
+          {/* HTML/CSS Preview */}
+          {(language === 'html' || language === 'css') && previewHtml && (
+            <Card className="overflow-hidden border-2 border-border">
               <div className="bg-muted/50 px-4 py-2 border-b border-border flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">🖥️ Live Preview</span>
               </div>
               <iframe
-                ref={iframeRef}
+                srcDoc={previewHtml}
                 className="w-full h-[300px] bg-white"
                 sandbox="allow-scripts"
                 title="Code Preview"

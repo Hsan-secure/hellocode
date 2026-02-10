@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Gamepad2, Trophy, MessageCircle, User, Zap, LogOut, Award, BookOpen, Play } from 'lucide-react';
+import { Gamepad2, Trophy, MessageCircle, User, Zap, LogOut, Award, BookOpen, Play, Code2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile } from '@/hooks/useUserProgress';
 import {
@@ -91,6 +91,15 @@ export function Navbar() {
             >
               <Play className="h-4 w-4" />
               Playtime
+            </Link>
+            <Link 
+              to="/tryout" 
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                location.pathname === '/tryout' ? 'text-primary' : 'text-muted-foreground'
+              }`}
+            >
+              <Code2 className="h-4 w-4" />
+              Tryout
             </Link>
           </div>
 

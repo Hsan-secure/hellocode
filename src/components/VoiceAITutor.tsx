@@ -214,9 +214,9 @@ export function VoiceAITutor() {
       recognition.continuous = false;
       recognition.interimResults = true;
       
-      // Empty string allows automatic language detection for multilingual support
+      // Use browser's default language detection by not setting a specific lang
       // This enables Hindi, Telugu, Tamil, and other languages to be recognized
-      recognition.lang = '';
+      recognition.lang = navigator.language || 'en-US';
 
       recognition.onresult = (event) => {
         let finalTranscript = '';

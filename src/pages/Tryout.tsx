@@ -206,16 +206,19 @@ const Tryout = () => {
 
     setTimeout(() => {
       if (language === 'html' || language === 'css') {
-        // Render HTML/CSS in iframe
-        if (iframeRef.current) {
-          const doc = iframeRef.current.contentDocument;
-          if (doc) {
-            doc.open();
-            doc.write(code);
-            doc.close();
+        // Show preview first, then write to iframe after render
+        setOutput(['✅ Rendered successfully! See the preview below.']);
+        // Use a short delay to ensure iframe is mounted before writing
+        setTimeout(() => {
+          if (iframeRef.current) {
+            const doc = iframeRef.current.contentDocument;
+            if (doc) {
+              doc.open();
+              doc.write(code);
+              doc.close();
+            }
           }
-        }
-        setOutput(['✅ Rendered successfully! See the preview above.']);
+        }, 100);
       } else if (language === 'javascript') {
         const logs: string[] = [];
         const originalLog = console.log;
@@ -366,9 +369,9 @@ const Tryout = () => {
             />
           </Card>
 
-          {/* HTML/CSS Preview */}
-          {(language === 'html' || language === 'css') && output.length > 0 && (
-            <Card className="overflow-hidden border-2 border-border">
+          {/* HTML/CSS Preview - always mounted when language is html/css */}
+          {(language === 'html' || language === 'css') && (
+            <Card className={`overflow-hidden border-2 border-border ${output.length === 0 ? 'hidden' : ''}`}>
               <div className="bg-muted/50 px-4 py-2 border-b border-border flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">🖥️ Live Preview</span>
               </div>

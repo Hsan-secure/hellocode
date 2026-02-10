@@ -45,11 +45,11 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center gap-6">
+          {/* Navigation Links - horizontally scrollable */}
+          <div className="hidden md:flex items-center gap-6 overflow-x-auto max-w-[500px] lg:max-w-none scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             <Link 
               to="/levels" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/levels' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -58,7 +58,7 @@ export function Navbar() {
             </Link>
             <Link 
               to="/leaderboard" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/leaderboard' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -67,7 +67,7 @@ export function Navbar() {
             </Link>
             <Link 
               to="/tutor" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/tutor' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -76,7 +76,7 @@ export function Navbar() {
             </Link>
             <Link 
               to="/learn" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/learn' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -85,7 +85,7 @@ export function Navbar() {
             </Link>
             <Link 
               to="/playtime" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/playtime' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -94,7 +94,7 @@ export function Navbar() {
             </Link>
             <Link 
               to="/tryout" 
-              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary whitespace-nowrap ${
                 location.pathname === '/tryout' ? 'text-primary' : 'text-muted-foreground'
               }`}
             >

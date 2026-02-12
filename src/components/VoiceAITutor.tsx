@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 import { Bot, Volume2, VolumeX, Sparkles, Loader2, Mic, MicOff, StopCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
-// Type definition for SpeechRecognition
 interface CustomSpeechRecognitionEvent {
   results: SpeechRecognitionResultList;
 }
@@ -30,10 +29,8 @@ interface CustomSpeechRecognitionInterface {
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-tutor`;
-const TTS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`;
 
-// System prompt for multilingual support
-const MULTILINGUAL_SYSTEM_PROMPT = `You are CodeQuest AI Tutor - a friendly, encouraging, and expert coding tutor who speaks multiple languages.
+const MULTILINGUAL_SYSTEM_PROMPT = `You are CodeQuest AI Tutor - a friendly, encouraging, and expert coding tutor who speaks multiple languages. You are an Indian female tutor named Devi.
 
 CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE that the user speaks to you.
 - If the user asks in Hindi, respond entirely in Hindi
@@ -42,6 +39,8 @@ CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE that the user spea
 - If the user asks in English, respond in English
 - For any other language, match the user's language
 
+CRITICAL RESPONSE RULE: Keep your responses SHORT and CONCISE - maximum 2-3 sentences. Be direct and helpful. No long paragraphs.
+
 Your role is to:
 1. Explain programming concepts clearly and simply
 2. Use analogies and real-world examples
@@ -49,13 +48,7 @@ Your role is to:
 4. Encourage learners and celebrate progress
 5. Answer questions about HTML, CSS, JavaScript, Python, Data Structures, and DBMS
 
-Guidelines:
-- Be warm and supportive - use emojis occasionally 😊
-- Keep explanations concise but thorough
-- If showing code, use proper formatting with backticks
-- Always be patient and never condescending
-
-Remember: Detect the user's language and respond in that same language!`;
+Remember: Detect the user's language and respond in that same language! Keep it short!`;
 
 async function streamChat({
   messages,
@@ -69,7 +62,6 @@ async function streamChat({
   onError: (error: string) => void;
 }) {
   try {
-    // Prepend the multilingual system message
     const messagesWithSystem = [
       { role: 'system' as const, content: MULTILINGUAL_SYSTEM_PROMPT },
       ...messages
@@ -139,22 +131,70 @@ async function streamChat({
   }
 }
 
-// Clean text for TTS - remove markdown, emojis, code blocks
 function cleanTextForTTS(text: string): string {
   return text
-    // Remove code blocks
-    .replace(/```[\s\S]*?```/g, "I've included some code in my response.")
-    // Remove inline code
-    .replace(/`[^`]+`/g, "code snippet")
-    // Remove markdown links
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`[^`]+`/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    // Remove markdown bold/italic
     .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, "$1")
-    // Remove headers
     .replace(/^#{1,6}\s*/gm, "")
-    // Clean up excessive whitespace
     .replace(/\n{3,}/g, "\n\n")
+    .replace(/😊|🎉|✨|🚀|💡|👍|🎯|✅|❌|🔥|💪|📝|🌟|⭐|😄|🙌|👏|💻|📌|🤔/g, "")
     .trim();
+}
+
+// Detect language from text for TTS voice selection
+function detectLanguage(text: string): string {
+  // Hindi (Devanagari)
+  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
+  // Telugu
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN';
+  // Tamil
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
+  // Kannada
+  if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN';
+  // Malayalam
+  if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN';
+  // Bengali
+  if (/[\u0980-\u09FF]/.test(text)) return 'bn-IN';
+  // Gujarati
+  if (/[\u0A80-\u0AFF]/.test(text)) return 'gu-IN';
+  // Marathi uses Devanagari too, covered by hi-IN
+  return 'en-IN';
+}
+
+// Get the best female voice for the language
+function getBestVoice(lang: string): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  
+  // Try to find a female voice matching the language
+  const langPrefix = lang.split('-')[0];
+  
+  // Priority: exact match female > exact match any > language prefix female > language prefix any
+  const exactFemale = voices.find(v => v.lang === lang && /female|woman|mahila/i.test(v.name));
+  if (exactFemale) return exactFemale;
+  
+  const exactMatch = voices.find(v => v.lang === lang);
+  if (exactMatch) return exactMatch;
+  
+  const prefixFemale = voices.find(v => v.lang.startsWith(langPrefix) && /female|woman/i.test(v.name));
+  if (prefixFemale) return prefixFemale;
+  
+  const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
+  if (prefixMatch) return prefixMatch;
+  
+  // For Indian English, try Google's Indian voice
+  if (lang === 'en-IN') {
+    const indianEnglish = voices.find(v => v.lang.includes('en') && v.name.toLowerCase().includes('india'));
+    if (indianEnglish) return indianEnglish;
+  }
+  
+  // Fallback to any English female voice
+  const englishFemale = voices.find(v => v.lang.startsWith('en') && /female|woman|samantha|victoria|karen|moira/i.test(v.name));
+  if (englishFemale) return englishFemale;
+  
+  // Final fallback
+  return voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
 }
 
 export function VoiceAITutor() {
@@ -164,48 +204,38 @@ export function VoiceAITutor() {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
-  const [pulseIntensity, setPulseIntensity] = useState(0);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
   
   const recognitionRef = useRef<CustomSpeechRecognitionInterface | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const audioGainRef = useRef<GainNode | null>(null);
-
   const transcriptRef = useRef<string>('');
   const isListeningRef = useRef<boolean>(false);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
 
-  // Update refs when state changes
-  useEffect(() => {
-    transcriptRef.current = currentTranscript;
-  }, [currentTranscript]);
+  useEffect(() => { transcriptRef.current = currentTranscript; }, [currentTranscript]);
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
 
+  // Load voices
   useEffect(() => {
-    isListeningRef.current = isListening;
-  }, [isListening]);
+    const loadVoices = () => { window.speechSynthesis.getVoices(); };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
 
-  // Check microphone permission on mount
   useEffect(() => {
     const checkPermission = async () => {
       try {
         const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
         setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
-        result.onchange = () => {
-          setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
-        };
+        result.onchange = () => setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
       } catch {
-        // Permissions API not supported, will check on first use
         setMicPermission('unknown');
       }
     };
     checkPermission();
   }, []);
 
-  // Initialize speech recognition with multilingual support
+  // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -213,15 +243,12 @@ export function VoiceAITutor() {
       recognitionRef.current = recognition;
       recognition.continuous = false;
       recognition.interimResults = true;
-      
-      // Use browser's default language detection by not setting a specific lang
-      // This enables Hindi, Telugu, Tamil, and other languages to be recognized
-      recognition.lang = navigator.language || 'en-US';
+      // Don't set a specific lang so it auto-detects multilingual input
+      recognition.lang = '';
 
       recognition.onresult = (event) => {
         let finalTranscript = '';
         let interimTranscript = '';
-
         for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
@@ -230,7 +257,6 @@ export function VoiceAITutor() {
             interimTranscript += result[0].transcript;
           }
         }
-
         const transcript = finalTranscript || interimTranscript;
         setCurrentTranscript(transcript);
         transcriptRef.current = transcript;
@@ -238,22 +264,12 @@ export function VoiceAITutor() {
 
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        
         if (event.error === 'not-allowed') {
           setMicPermission('denied');
-          toast({
-            title: "Microphone access denied",
-            description: "Please allow microphone access in your browser settings to use voice features.",
-            variant: "destructive",
-          });
+          toast({ title: "Microphone access denied", description: "Please allow microphone access in your browser settings.", variant: "destructive" });
         } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          toast({
-            title: "Voice error",
-            description: "Could not recognize speech. Please try again.",
-            variant: "destructive",
-          });
+          toast({ title: "Voice error", description: "Could not recognize speech. Please try again.", variant: "destructive" });
         }
-        
         setIsListening(false);
         isListeningRef.current = false;
         setCurrentStatus('idle');
@@ -263,10 +279,8 @@ export function VoiceAITutor() {
       recognition.onend = () => {
         const transcript = transcriptRef.current.trim();
         const wasListening = isListeningRef.current;
-        
         setIsListening(false);
         isListeningRef.current = false;
-        
         if (transcript && wasListening) {
           setCurrentStatus('processing');
           handleSend(transcript);
@@ -278,258 +292,65 @@ export function VoiceAITutor() {
       };
     }
 
-    return () => {
-      // Stop any playing audio
-      try {
-        audioRef.current?.pause();
-      } catch {
-        // ignore
-      }
-
-      if (audioSourceRef.current) {
-        try {
-          audioSourceRef.current.stop();
-        } catch {
-          // ignore
-        }
-        try {
-          audioSourceRef.current.disconnect();
-        } catch {
-          // ignore
-        }
-        audioSourceRef.current = null;
-      }
-
-      if (audioGainRef.current) {
-        try {
-          audioGainRef.current.disconnect();
-        } catch {
-          // ignore
-        }
-        audioGainRef.current = null;
-      }
-
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-      }
-
-      if (audioContextRef.current) {
-        void audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-    };
+    return () => { window.speechSynthesis.cancel(); };
   }, []);
 
-  // Pulse animation for listening/speaking
-  useEffect(() => {
-    if (isListening || isSpeaking) {
-      const interval = setInterval(() => {
-        setPulseIntensity(prev => (prev + 1) % 100);
-      }, 50);
-      return () => clearInterval(interval);
-    } else {
-      setPulseIntensity(0);
-    }
-  }, [isListening, isSpeaking]);
-
-  const ensureAudioContextReady = useCallback(async (): Promise<AudioContext | null> => {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return null;
-
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextClass();
-    }
-
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-
-    return audioContextRef.current;
-  }, []);
-
-  const stopWebAudio = useCallback(() => {
-    if (audioSourceRef.current) {
-      try {
-        audioSourceRef.current.onended = null;
-        audioSourceRef.current.stop();
-      } catch {
-        // ignore
-      }
-      try {
-        audioSourceRef.current.disconnect();
-      } catch {
-        // ignore
-      }
-      audioSourceRef.current = null;
-    }
-
-    if (audioGainRef.current) {
-      try {
-        audioGainRef.current.disconnect();
-      } catch {
-        // ignore
-      }
-      audioGainRef.current = null;
-    }
-  }, []);
-
-  // ElevenLabs TTS
-  const speakTextWithElevenLabs = useCallback(async (text: string) => {
+  // Browser TTS - free, fast, multilingual
+  const speakText = useCallback((text: string) => {
     if (!voiceEnabled) return;
-
     const cleanedText = cleanTextForTTS(text);
     if (!cleanedText) return;
 
-    try {
+    window.speechSynthesis.cancel();
+    
+    const lang = detectLanguage(cleanedText);
+    const utterance = new SpeechSynthesisUtterance(cleanedText);
+    utterance.rate = 1.05;
+    utterance.pitch = 1.1;
+    utterance.volume = 1;
+    
+    const voice = getBestVoice(lang);
+    if (voice) utterance.voice = voice;
+    utterance.lang = lang;
+
+    utterance.onstart = () => {
       setIsSpeaking(true);
       setCurrentStatus('speaking');
-
-      // Stop anything already playing
-      stopWebAudio();
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-        } catch {
-          // ignore
-        }
-        audioRef.current = null;
-      }
-
-      const response = await fetch(TTS_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ text: cleanedText }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS request failed: ${response.status}`);
-      }
-
-      // Prefer WebAudio playback (more reliable vs autoplay policies)
-      const audioBytes = await response.arrayBuffer();
-      const audioContext = await ensureAudioContextReady();
-      if (audioContext) {
-        const decoded = await audioContext.decodeAudioData(audioBytes.slice(0));
-
-        const source = audioContext.createBufferSource();
-        const gain = audioContext.createGain();
-        gain.gain.value = 1;
-
-        source.buffer = decoded;
-        source.connect(gain);
-        gain.connect(audioContext.destination);
-
-        audioSourceRef.current = source;
-        audioGainRef.current = gain;
-
-        source.onended = () => {
-          setIsSpeaking(false);
-          setCurrentStatus('idle');
-          audioSourceRef.current = null;
-        };
-
-        source.start(0);
-        return;
-      }
-
-      // Fallback: HTMLAudioElement
-      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
-
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-
-      const audioUrl = URL.createObjectURL(audioBlob);
-      audioUrlRef.current = audioUrl;
-
-      const audio = new Audio(audioUrl);
-      audio.volume = 1;
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        setCurrentStatus('idle');
-      };
-
-      audio.onerror = () => {
-        console.error('Audio playback error');
-        setIsSpeaking(false);
-        setCurrentStatus('idle');
-      };
-
-      try {
-        await audio.play();
-      } catch (err) {
-        console.error('Audio play blocked:', err);
-        setIsSpeaking(false);
-        setCurrentStatus('idle');
-        toast({
-          title: 'Audio blocked by browser',
-          description: 'Tap the microphone once, then try again (some browsers block auto-play audio).',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('ElevenLabs TTS error:', error);
+    };
+    utterance.onend = () => {
       setIsSpeaking(false);
       setCurrentStatus('idle');
-      toast({
-        title: "Voice error",
-        description: "Could not play the voice response. Please try again.",
-        variant: "destructive",
-      });
-    }
-  }, [ensureAudioContextReady, stopWebAudio, voiceEnabled]);
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setCurrentStatus('idle');
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [voiceEnabled]);
 
   const stopSpeaking = useCallback(() => {
-    stopWebAudio();
-
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      } catch {
-        // ignore
-      }
-      audioRef.current = null;
-    }
-
+    window.speechSynthesis.cancel();
     setIsSpeaking(false);
     setCurrentStatus('idle');
-  }, [stopWebAudio]);
+  }, []);
 
   const requestMicrophonePermission = async (): Promise<boolean> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop the stream immediately, we just needed permission
       stream.getTracks().forEach(track => track.stop());
       setMicPermission('granted');
       return true;
-    } catch (error) {
-      console.error('Microphone permission error:', error);
+    } catch {
       setMicPermission('denied');
-      toast({
-        title: "Microphone access required",
-        description: "Please allow microphone access to use voice features. Check your browser settings.",
-        variant: "destructive",
-      });
+      toast({ title: "Microphone access required", description: "Please allow microphone access to use voice features.", variant: "destructive" });
       return false;
     }
   };
 
   const toggleListening = async () => {
     if (!recognitionRef.current) {
-      toast({
-        title: "Voice not supported",
-        description: "Speech recognition is not supported in your browser.",
-        variant: "destructive",
-      });
+      toast({ title: "Voice not supported", description: "Speech recognition is not supported in your browser.", variant: "destructive" });
       return;
     }
 
@@ -541,53 +362,31 @@ export function VoiceAITutor() {
       setCurrentTranscript('');
       transcriptRef.current = '';
     } else {
-      // Request microphone permission first
       if (micPermission !== 'granted') {
         const granted = await requestMicrophonePermission();
         if (!granted) return;
       }
-
-      // Unlock audio early (helps with strict mobile autoplay policies)
-      try {
-        await ensureAudioContextReady();
-      } catch {
-        // ignore
-      }
-
-      // Stop any ongoing speech
-      if (isSpeaking) {
-        stopSpeaking();
-      }
-      
+      if (isSpeaking) stopSpeaking();
       setCurrentTranscript('');
       transcriptRef.current = '';
-      
       try {
         recognitionRef.current.start();
         setIsListening(true);
         isListeningRef.current = true;
         setCurrentStatus('listening');
-      } catch (error) {
-        console.error('Failed to start recognition:', error);
-        toast({
-          title: "Voice error",
-          description: "Could not start voice recognition. Please try again.",
-          variant: "destructive",
-        });
+      } catch {
+        toast({ title: "Voice error", description: "Could not start voice recognition. Please try again.", variant: "destructive" });
       }
     }
   };
 
   const toggleVoice = () => {
-    if (isSpeaking) {
-      stopSpeaking();
-    }
+    if (isSpeaking) stopSpeaking();
     setVoiceEnabled(!voiceEnabled);
   };
 
   const handleSend = async (messageText: string) => {
     if (!messageText.trim() || isLoading) return;
-
     setIsLoading(true);
     setCurrentStatus('processing');
 
@@ -607,7 +406,7 @@ export function VoiceAITutor() {
         setChatHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
         setLastResponse(assistantContent);
         if (voiceEnabled && assistantContent) {
-          speakTextWithElevenLabs(assistantContent);
+          speakText(assistantContent);
         } else {
           setCurrentStatus('idle');
         }
@@ -615,38 +414,26 @@ export function VoiceAITutor() {
       onError: (error) => {
         setIsLoading(false);
         setCurrentStatus('idle');
-        toast({
-          title: "Error",
-          description: error,
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: error, variant: "destructive" });
       },
     });
   };
 
   const getStatusText = () => {
     switch (currentStatus) {
-      case 'listening':
-        return currentTranscript || "I'm listening...";
-      case 'processing':
-        return "Thinking...";
-      case 'speaking':
-        return "Speaking...";
-      default:
-        return "Tap the microphone to ask a question";
+      case 'listening': return currentTranscript || "I'm listening...";
+      case 'processing': return "Thinking...";
+      case 'speaking': return "Speaking...";
+      default: return "Tap the microphone to ask a question";
     }
   };
 
   const getStatusColor = () => {
     switch (currentStatus) {
-      case 'listening':
-        return 'from-destructive to-destructive/70';
-      case 'processing':
-        return 'from-primary to-secondary';
-      case 'speaking':
-        return 'from-success to-success/70';
-      default:
-        return 'from-primary to-secondary';
+      case 'listening': return 'from-destructive to-destructive/70';
+      case 'processing': return 'from-primary to-secondary';
+      case 'speaking': return 'from-success to-success/70';
+      default: return 'from-primary to-secondary';
     }
   };
 
@@ -654,25 +441,14 @@ export function VoiceAITutor() {
     <Card variant="glow" className="flex flex-col h-[600px] items-center justify-center p-8 relative">
       {/* Voice Toggle */}
       <div className="absolute top-4 right-4">
-        <Button 
-          variant="ghost" 
-          size="icon"
-          onClick={toggleVoice}
-          className={cn(voiceEnabled && "bg-primary/10")}
-        >
-          {voiceEnabled ? (
-            <Volume2 className="h-5 w-5 text-primary" />
-          ) : (
-            <VolumeX className="h-5 w-5 text-muted-foreground" />
-          )}
+        <Button variant="ghost" size="icon" onClick={toggleVoice} className={cn(voiceEnabled && "bg-primary/10")}>
+          {voiceEnabled ? <Volume2 className="h-5 w-5 text-primary" /> : <VolumeX className="h-5 w-5 text-muted-foreground" />}
         </Button>
       </div>
 
-      {/* Central Voice Interface */}
       <div className="flex flex-col items-center gap-6">
         {/* AI Avatar with Pulse Effect */}
         <div className="relative">
-          {/* Outer pulse rings */}
           <div className={cn(
             "absolute inset-0 rounded-full transition-all duration-300",
             currentStatus === 'listening' && "animate-ping bg-destructive/20",
@@ -681,25 +457,19 @@ export function VoiceAITutor() {
           )} style={{ transform: 'scale(1.5)' }} />
           <div className={cn(
             "absolute inset-0 rounded-full transition-all duration-300",
-            currentStatus === 'listening' && "animate-ping bg-destructive/30 animation-delay-150",
+            currentStatus === 'listening' && "animate-ping bg-destructive/30",
             currentStatus === 'speaking' && "animate-pulse bg-success/30",
             currentStatus === 'processing' && "animate-pulse bg-primary/30"
           )} style={{ transform: 'scale(1.3)', animationDelay: '0.15s' }} />
           
-          {/* Main avatar */}
           <div className={cn(
             "relative h-32 w-32 rounded-full flex items-center justify-center transition-all duration-500 bg-gradient-to-br",
             getStatusColor(),
             currentStatus !== 'idle' && "shadow-2xl"
           )}>
-            {isLoading ? (
-              <Loader2 className="h-12 w-12 text-primary-foreground animate-spin" />
-            ) : (
-              <Bot className="h-12 w-12 text-primary-foreground" />
-            )}
+            {isLoading ? <Loader2 className="h-12 w-12 text-primary-foreground animate-spin" /> : <Bot className="h-12 w-12 text-primary-foreground" />}
           </div>
 
-          {/* Status indicator */}
           <div className={cn(
             "absolute -bottom-1 -right-1 h-6 w-6 rounded-full border-4 border-card transition-colors duration-300",
             currentStatus === 'listening' && "bg-destructive animate-pulse",
@@ -711,30 +481,28 @@ export function VoiceAITutor() {
 
         {/* Title */}
         <div className="text-center">
-          <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-            Voice AI Tutor
-          </h2>
+          <h2 className="font-display text-2xl font-bold text-foreground mb-2">Voice AI Tutor</h2>
           <p className="text-muted-foreground flex items-center gap-2 justify-center max-w-xs">
             <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="truncate">{getStatusText()}</span>
           </p>
         </div>
 
+        {/* Last response text */}
+        {lastResponse && currentStatus !== 'listening' && (
+          <div className="bg-muted/30 rounded-lg px-4 py-3 max-w-xs max-h-32 overflow-y-auto animate-fade-in">
+            <p className="text-sm text-foreground leading-relaxed">{cleanTextForTTS(lastResponse)}</p>
+          </div>
+        )}
+
         {/* Buttons */}
         <div className="flex items-center gap-4">
-          {/* Stop Button (when speaking) */}
           {isSpeaking && (
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={stopSpeaking}
-              className="h-14 w-14 rounded-full"
-            >
+            <Button variant="outline" size="lg" onClick={stopSpeaking} className="h-14 w-14 rounded-full">
               <StopCircle className="h-6 w-6 text-destructive" />
             </Button>
           )}
 
-          {/* Microphone Button */}
           <Button
             variant={isListening ? "destructive" : "hero"}
             size="lg"
@@ -746,22 +514,17 @@ export function VoiceAITutor() {
               "shadow-lg hover:shadow-xl"
             )}
           >
-            {isListening ? (
-              <MicOff className="h-8 w-8" />
-            ) : (
-              <Mic className="h-8 w-8" />
-            )}
+            {isListening ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
           </Button>
         </div>
 
-        {/* Live Transcript (when listening) */}
+        {/* Live Transcript */}
         {isListening && currentTranscript && (
           <div className="bg-muted/50 rounded-lg px-4 py-2 max-w-xs animate-fade-in">
             <p className="text-sm text-foreground italic">"{currentTranscript}"</p>
           </div>
         )}
 
-        {/* Quick Tips */}
         <div className="text-center max-w-xs">
           <p className="text-xs text-muted-foreground">
             Ask in any language - Hindi, Telugu, Tamil, English & more! Questions about HTML, CSS, JavaScript, Python, and Data Structures.

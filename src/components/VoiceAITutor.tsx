@@ -204,29 +204,41 @@ function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice |
   const voices = window.speechSynthesis.getVoices();
   const langPrefix = lang.split('-')[0];
   
-  const genderPatterns = gender === 'female'
-    ? /female|woman|mahila|samantha|victoria|karen|moira|zira|susan/i
-    : /male|man|david|mark|james|daniel|george|rishi/i;
+  // Prefer Google and Microsoft high-quality voices for natural sound
+  const highQualityPatterns = /google|microsoft|natural|neural|enhanced|premium/i;
+  
+  const femaleNames = /female|woman|mahila|samantha|victoria|karen|moira|zira|susan|aditi|priya|neerja|swara|shreya|kavya|ananya|raveena|heera/i;
+  const maleNames = /male|man|david|mark|james|daniel|george|rishi|hemant|kalpana|madhur/i;
+  const genderPatterns = gender === 'female' ? femaleNames : maleNames;
 
-  // Priority: exact lang + gender > exact lang > prefix + gender > prefix > fallback
+  // 1. High-quality voice with exact lang + gender (best)
+  const hqExactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name) && highQualityPatterns.test(v.name));
+  if (hqExactGender) return hqExactGender;
+
+  // 2. Exact lang + gender
   const exactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name));
   if (exactGender) return exactGender;
   
+  // 3. Exact lang match
   const exactMatch = voices.find(v => v.lang === lang);
   if (exactMatch) return exactMatch;
+
+  // 4. Indian English preference
+  if (lang === 'en-IN' || lang === 'en-US') {
+    const indianVoice = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name) && genderPatterns.test(v.name));
+    if (indianVoice) return indianVoice;
+    const anyIndian = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name));
+    if (anyIndian) return anyIndian;
+  }
   
+  // 5. Prefix + gender
   const prefixGender = voices.find(v => v.lang.startsWith(langPrefix) && genderPatterns.test(v.name));
   if (prefixGender) return prefixGender;
   
   const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
   if (prefixMatch) return prefixMatch;
-  
-  if (lang === 'en-IN') {
-    const indianEnglish = voices.find(v => v.lang.includes('en') && v.name.toLowerCase().includes('india'));
-    if (indianEnglish) return indianEnglish;
-  }
 
-  // For Urdu, try Hindi voices as fallback (similar pronunciation)
+  // 6. Urdu fallback to Hindi
   if (lang === 'ur-PK') {
     const hindiVoice = voices.find(v => v.lang.startsWith('hi') && genderPatterns.test(v.name));
     if (hindiVoice) return hindiVoice;
@@ -234,6 +246,7 @@ function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice |
     if (anyHindi) return anyHindi;
   }
   
+  // 7. Any English with gender
   const englishGender = voices.find(v => v.lang.startsWith('en') && genderPatterns.test(v.name));
   if (englishGender) return englishGender;
   
@@ -312,6 +325,8 @@ export function VoiceAITutor() {
       recognition.interimResults = true;
       recognition.lang = '';
 
+      let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+
       recognition.onresult = (event) => {
         let finalTranscript = '';
         let interimTranscript = '';
@@ -327,9 +342,12 @@ export function VoiceAITutor() {
         setCurrentTranscript(transcript);
         transcriptRef.current = transcript;
 
-        // Auto-send on final result in continuous mode
+        // Wait 2 seconds after user stops talking, then process
+        if (silenceTimer) clearTimeout(silenceTimer);
         if (finalTranscript.trim()) {
-          recognition.stop();
+          silenceTimer = setTimeout(() => {
+            recognition.stop();
+          }, 2000);
         }
       };
 
@@ -392,8 +410,8 @@ export function VoiceAITutor() {
     
     const lang = detectLanguage(cleanedText);
     const utterance = new SpeechSynthesisUtterance(cleanedText);
-    utterance.rate = 1.0;
-    utterance.pitch = voiceGender === 'female' ? 1.1 : 0.9;
+    utterance.rate = 0.92;
+    utterance.pitch = voiceGender === 'female' ? 1.15 : 0.85;
     utterance.volume = 1;
     
     const voice = getBestVoice(lang, voiceGender);

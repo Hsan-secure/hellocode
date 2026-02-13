@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Bot, Volume2, VolumeX, Sparkles, Loader2, Mic, MicOff, StopCircle } from 'lucide-react';
+import { Bot, Volume2, VolumeX, Sparkles, Loader2, Mic, MicOff, StopCircle, User, UserRound } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface CustomSpeechRecognitionEvent {
@@ -27,56 +27,66 @@ interface CustomSpeechRecognitionInterface {
 }
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
+type VoiceGender = 'female' | 'male';
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-tutor`;
 
-const MULTILINGUAL_SYSTEM_PROMPT = `You are Devi - a warm, caring, and friendly AI companion. You are like a best friend, elder sister, and mentor all in one. You speak multiple languages fluently.
+function buildSystemPrompt(greetedLanguages: Set<string>, lockedLanguage: string | null): string {
+  const greetingInstruction = greetedLanguages.size === 0
+    ? `GREETING: This is the FIRST message. Greet the user warmly using the culturally appropriate greeting for their language.`
+    : `GREETING: You have already greeted in these languages: ${Array.from(greetedLanguages).join(', ')}. Do NOT greet again for these languages. Only greet if the user switches to a NEW language you haven't greeted in yet. For already-greeted languages, just respond naturally without any greeting.`;
 
-CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE that the user speaks to you.
-- If the user asks in Hindi, respond entirely in Hindi
-- If the user asks in Telugu, respond entirely in Telugu  
-- If the user asks in Tamil, respond entirely in Tamil
-- If the user asks in English, respond in English
-- If the user asks in Urdu, respond in Urdu
-- For any other language, match the user's language
+  const languageLockInstruction = lockedLanguage
+    ? `CRITICAL LANGUAGE LOCK: The user has requested you speak in ${lockedLanguage}. You MUST respond ONLY in ${lockedLanguage} regardless of what language the user speaks. Never switch languages unless the user explicitly asks you to change.`
+    : `LANGUAGE RULE: Respond in the SAME LANGUAGE the user speaks to you. If they speak Hindi, respond in Hindi. If Telugu, respond in Telugu. Match their language exactly.`;
 
-GREETING RULES (for first message or greetings):
-- Hindi speakers: Greet with "Assalamu Alaikum!" or "Namaste!" based on context
-- Telugu speakers: Greet with "Namaste!" or "Baagunnara?"
-- English speakers: Greet with "Hello! How are you doing?"  
-- Tamil speakers: Greet with "Vanakkam!"
-- Kannada speakers: Greet with "Namaskara!"
-- Urdu speakers: Greet with "Assalamu Alaikum!"
-- Bengali speakers: Greet with "Nomoshkar!"
-- Use culturally appropriate greetings for any other language
+  return `You are Sara - a warm, caring, and friendly AI companion. You are like a best friend, elder sister, and mentor all in one. You speak multiple languages fluently.
 
-CRITICAL RESPONSE RULE: Keep your responses SHORT and CONCISE - maximum 2-3 sentences. Be direct, warm, and supportive. No long paragraphs.
+${languageLockInstruction}
+
+${greetingInstruction}
+
+GREETING STYLES (only when greeting for the FIRST TIME in a language):
+- Hindi: "Assalamu Alaikum!" or "Namaste!" based on context
+- Telugu: "Namaste!" or "Baagunnara?"
+- English: "Hello! How are you doing?"
+- Tamil: "Vanakkam!"
+- Kannada: "Namaskara!"
+- Urdu: "Assalamu Alaikum! Kaise hain aap?"
+- Bengali: "Nomoshkar!"
+
+URDU SPECIAL RULE: When speaking Urdu, use simple and clear Urdu words. Write in Roman Urdu (Latin script) so it's easy to read and understand. Use everyday conversational Urdu, not heavy literary Urdu. Example: "Aap kaise hain? Main Sara hoon, aapki dost. Batayiye kya chal raha hai?"
+
+CRITICAL RESPONSE RULE: Keep responses SHORT - maximum 2-3 sentences. Be direct, warm, and supportive. No long paragraphs.
 
 Your role is to be a COMPLETE FRIEND AND MENTOR:
 1. Talk about ANYTHING - life, career fears, relationships, motivation, mental health, studies, future worries
-2. Be emotionally supportive - if someone is scared about their career or life, comfort them like a caring friend
+2. Be emotionally supportive - comfort them like a caring friend
 3. Give practical life advice and motivation
-4. Help with programming and coding when asked (HTML, CSS, JavaScript, Python, Data Structures, DBMS)
-5. Celebrate their wins, comfort their losses, and always encourage them
-6. Be warm, use casual friendly language, and make them feel heard and valued
-7. If someone shares fears or anxiety, acknowledge their feelings first before giving advice
+4. Help with programming and coding when asked
+5. Celebrate their wins, comfort their losses, always encourage
+6. Be warm, use casual friendly language, make them feel heard
+7. If someone shares fears or anxiety, acknowledge feelings first before advice
 
-Remember: You are NOT just a coding tutor. You are a FRIEND who happens to know coding too. Detect the user's language and respond in that same language! Keep it short and heartfelt!`;
+Remember: You are a FRIEND who happens to know coding too. Keep it short and heartfelt!`;
+}
 
 async function streamChat({
   messages,
+  systemPrompt,
   onDelta,
   onDone,
   onError,
 }: {
   messages: ChatMessage[];
+  systemPrompt: string;
   onDelta: (deltaText: string) => void;
   onDone: () => void;
   onError: (error: string) => void;
 }) {
   try {
     const messagesWithSystem = [
-      { role: 'system' as const, content: MULTILINGUAL_SYSTEM_PROMPT },
+      { role: 'system' as const, content: systemPrompt },
       ...messages
     ];
     
@@ -156,57 +166,77 @@ function cleanTextForTTS(text: string): string {
     .trim();
 }
 
-// Detect language from text for TTS voice selection
 function detectLanguage(text: string): string {
-  // Hindi (Devanagari)
+  if (/[\u0600-\u06FF]/.test(text)) return 'ur-PK'; // Urdu/Arabic script
   if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
-  // Telugu
   if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN';
-  // Tamil
   if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
-  // Kannada
   if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN';
-  // Malayalam
   if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN';
-  // Bengali
   if (/[\u0980-\u09FF]/.test(text)) return 'bn-IN';
-  // Gujarati
   if (/[\u0A80-\u0AFF]/.test(text)) return 'gu-IN';
-  // Marathi uses Devanagari too, covered by hi-IN
   return 'en-IN';
 }
 
-// Get the best female voice for the language
-function getBestVoice(lang: string): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
+function detectLanguageName(text: string): string {
+  // Check if user is requesting a language switch
+  const lowerText = text.toLowerCase();
+  if (/\b(talk|speak|baat|bolo|respond)\b.*\b(hindi|हिंदी)\b/i.test(lowerText) || /\bhindi\s*(me|mein|में)\b/i.test(lowerText)) return 'Hindi';
+  if (/\b(talk|speak|respond)\b.*\btelugu\b/i.test(lowerText) || /\btelugu\s*(lo|లో)\b/i.test(lowerText)) return 'Telugu';
+  if (/\b(talk|speak|respond)\b.*\btamil\b/i.test(lowerText)) return 'Tamil';
+  if (/\b(talk|speak|respond)\b.*\burdu\b/i.test(lowerText)) return 'Urdu';
+  if (/\b(talk|speak|respond)\b.*\benglish\b/i.test(lowerText)) return 'English';
+  if (/\b(talk|speak|respond)\b.*\bkannada\b/i.test(lowerText)) return 'Kannada';
+  if (/\b(talk|speak|respond)\b.*\bbengali\b/i.test(lowerText) || /\b(talk|speak|respond)\b.*\bbangla\b/i.test(lowerText)) return 'Bengali';
   
-  // Try to find a female voice matching the language
+  // Detect from script
+  if (/[\u0600-\u06FF]/.test(text)) return 'Urdu';
+  if (/[\u0900-\u097F]/.test(text)) return 'Hindi';
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'Telugu';
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'Tamil';
+  if (/[\u0C80-\u0CFF]/.test(text)) return 'Kannada';
+  if (/[\u0D00-\u0D7F]/.test(text)) return 'Malayalam';
+  if (/[\u0980-\u09FF]/.test(text)) return 'Bengali';
+  return 'English';
+}
+
+function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
   const langPrefix = lang.split('-')[0];
   
-  // Priority: exact match female > exact match any > language prefix female > language prefix any
-  const exactFemale = voices.find(v => v.lang === lang && /female|woman|mahila/i.test(v.name));
-  if (exactFemale) return exactFemale;
+  const genderPatterns = gender === 'female'
+    ? /female|woman|mahila|samantha|victoria|karen|moira|zira|susan/i
+    : /male|man|david|mark|james|daniel|george|rishi/i;
+
+  // Priority: exact lang + gender > exact lang > prefix + gender > prefix > fallback
+  const exactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name));
+  if (exactGender) return exactGender;
   
   const exactMatch = voices.find(v => v.lang === lang);
   if (exactMatch) return exactMatch;
   
-  const prefixFemale = voices.find(v => v.lang.startsWith(langPrefix) && /female|woman/i.test(v.name));
-  if (prefixFemale) return prefixFemale;
+  const prefixGender = voices.find(v => v.lang.startsWith(langPrefix) && genderPatterns.test(v.name));
+  if (prefixGender) return prefixGender;
   
   const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
   if (prefixMatch) return prefixMatch;
   
-  // For Indian English, try Google's Indian voice
   if (lang === 'en-IN') {
     const indianEnglish = voices.find(v => v.lang.includes('en') && v.name.toLowerCase().includes('india'));
     if (indianEnglish) return indianEnglish;
   }
+
+  // For Urdu, try Hindi voices as fallback (similar pronunciation)
+  if (lang === 'ur-PK') {
+    const hindiVoice = voices.find(v => v.lang.startsWith('hi') && genderPatterns.test(v.name));
+    if (hindiVoice) return hindiVoice;
+    const anyHindi = voices.find(v => v.lang.startsWith('hi'));
+    if (anyHindi) return anyHindi;
+  }
   
-  // Fallback to any English female voice
-  const englishFemale = voices.find(v => v.lang.startsWith('en') && /female|woman|samantha|victoria|karen|moira/i.test(v.name));
-  if (englishFemale) return englishFemale;
+  const englishGender = voices.find(v => v.lang.startsWith('en') && genderPatterns.test(v.name));
+  if (englishGender) return englishGender;
   
-  // Final fallback
   return voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
 }
 
@@ -219,14 +249,20 @@ export function VoiceAITutor() {
   const [currentStatus, setCurrentStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>('female');
+  const [continuousMode, setContinuousMode] = useState(false);
   
   const recognitionRef = useRef<CustomSpeechRecognitionInterface | null>(null);
   const transcriptRef = useRef<string>('');
   const isListeningRef = useRef<boolean>(false);
+  const continuousModeRef = useRef<boolean>(false);
+  const greetedLanguagesRef = useRef<Set<string>>(new Set());
+  const lockedLanguageRef = useRef<string | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
 
   useEffect(() => { transcriptRef.current = currentTranscript; }, [currentTranscript]);
   useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { continuousModeRef.current = continuousMode; }, [continuousMode]);
 
   // Load voices
   useEffect(() => {
@@ -248,15 +284,32 @@ export function VoiceAITutor() {
     checkPermission();
   }, []);
 
+  // Restart listening for continuous mode
+  const restartListening = useCallback(() => {
+    if (!continuousModeRef.current || !recognitionRef.current) return;
+    setTimeout(() => {
+      if (!continuousModeRef.current) return;
+      try {
+        setCurrentTranscript('');
+        transcriptRef.current = '';
+        recognitionRef.current?.start();
+        setIsListening(true);
+        isListeningRef.current = true;
+        setCurrentStatus('listening');
+      } catch {
+        // recognition may already be running
+      }
+    }, 300);
+  }, []);
+
   // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognitionClass() as CustomSpeechRecognitionInterface;
       recognitionRef.current = recognition;
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
-      // Don't set a specific lang so it auto-detects multilingual input
       recognition.lang = '';
 
       recognition.onresult = (event) => {
@@ -273,20 +326,34 @@ export function VoiceAITutor() {
         const transcript = finalTranscript || interimTranscript;
         setCurrentTranscript(transcript);
         transcriptRef.current = transcript;
+
+        // Auto-send on final result in continuous mode
+        if (finalTranscript.trim()) {
+          recognition.stop();
+        }
       };
 
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           setMicPermission('denied');
+          setContinuousMode(false);
           toast({ title: "Microphone access denied", description: "Please allow microphone access in your browser settings.", variant: "destructive" });
-        } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        } else if (event.error === 'no-speech') {
+          // In continuous mode, restart on no-speech
+          if (continuousModeRef.current) {
+            restartListening();
+            return;
+          }
+        } else if (event.error !== 'aborted') {
           toast({ title: "Voice error", description: "Could not recognize speech. Please try again.", variant: "destructive" });
         }
-        setIsListening(false);
-        isListeningRef.current = false;
-        setCurrentStatus('idle');
-        setCurrentTranscript('');
+        if (!continuousModeRef.current) {
+          setIsListening(false);
+          isListeningRef.current = false;
+          setCurrentStatus('idle');
+          setCurrentTranscript('');
+        }
       };
 
       recognition.onend = () => {
@@ -299,6 +366,8 @@ export function VoiceAITutor() {
           handleSend(transcript);
           setCurrentTranscript('');
           transcriptRef.current = '';
+        } else if (continuousModeRef.current) {
+          restartListening();
         } else {
           setCurrentStatus('idle');
         }
@@ -308,21 +377,26 @@ export function VoiceAITutor() {
     return () => { window.speechSynthesis.cancel(); };
   }, []);
 
-  // Browser TTS - free, fast, multilingual
   const speakText = useCallback((text: string) => {
-    if (!voiceEnabled) return;
+    if (!voiceEnabled) {
+      if (continuousModeRef.current) restartListening();
+      return;
+    }
     const cleanedText = cleanTextForTTS(text);
-    if (!cleanedText) return;
+    if (!cleanedText) {
+      if (continuousModeRef.current) restartListening();
+      return;
+    }
 
     window.speechSynthesis.cancel();
     
     const lang = detectLanguage(cleanedText);
     const utterance = new SpeechSynthesisUtterance(cleanedText);
-    utterance.rate = 1.05;
-    utterance.pitch = 1.1;
+    utterance.rate = 1.0;
+    utterance.pitch = voiceGender === 'female' ? 1.1 : 0.9;
     utterance.volume = 1;
     
-    const voice = getBestVoice(lang);
+    const voice = getBestVoice(lang, voiceGender);
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
 
@@ -333,14 +407,19 @@ export function VoiceAITutor() {
     utterance.onend = () => {
       setIsSpeaking(false);
       setCurrentStatus('idle');
+      // In continuous mode, restart listening after speaking
+      if (continuousModeRef.current) {
+        restartListening();
+      }
     };
     utterance.onerror = () => {
       setIsSpeaking(false);
       setCurrentStatus('idle');
+      if (continuousModeRef.current) restartListening();
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [voiceEnabled]);
+  }, [voiceEnabled, voiceGender, restartListening]);
 
   const stopSpeaking = useCallback(() => {
     window.speechSynthesis.cancel();
@@ -367,19 +446,25 @@ export function VoiceAITutor() {
       return;
     }
 
-    if (isListening) {
+    if (isListening || continuousMode) {
+      // Stop everything
       recognitionRef.current.stop();
+      setContinuousMode(false);
+      continuousModeRef.current = false;
       setIsListening(false);
       isListeningRef.current = false;
       setCurrentStatus('idle');
       setCurrentTranscript('');
       transcriptRef.current = '';
+      stopSpeaking();
     } else {
       if (micPermission !== 'granted') {
         const granted = await requestMicrophonePermission();
         if (!granted) return;
       }
       if (isSpeaking) stopSpeaking();
+      setContinuousMode(true);
+      continuousModeRef.current = true;
       setCurrentTranscript('');
       transcriptRef.current = '';
       try {
@@ -389,6 +474,8 @@ export function VoiceAITutor() {
         setCurrentStatus('listening');
       } catch {
         toast({ title: "Voice error", description: "Could not start voice recognition. Please try again.", variant: "destructive" });
+        setContinuousMode(false);
+        continuousModeRef.current = false;
       }
     }
   };
@@ -403,13 +490,32 @@ export function VoiceAITutor() {
     setIsLoading(true);
     setCurrentStatus('processing');
 
+    // Detect language switch request
+    const requestedLang = detectLanguageName(messageText);
+    const lowerText = messageText.toLowerCase();
+    const isLanguageSwitchRequest = /\b(talk|speak|baat|bolo|respond)\b.*\b(hindi|telugu|tamil|urdu|english|kannada|bengali|bangla)\b/i.test(lowerText);
+    
+    if (isLanguageSwitchRequest) {
+      lockedLanguageRef.current = requestedLang;
+      // Reset greeting for new language
+      if (!greetedLanguagesRef.current.has(requestedLang)) {
+        // Will greet in new language
+      }
+    }
+
+    // Track greeted language from response
+    const currentLang = lockedLanguageRef.current || requestedLang;
+
     const newChatHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: messageText }];
     setChatHistory(newChatHistory);
+
+    const systemPrompt = buildSystemPrompt(greetedLanguagesRef.current, lockedLanguageRef.current);
 
     let assistantContent = "";
 
     await streamChat({
       messages: newChatHistory,
+      systemPrompt,
       onDelta: (chunk) => {
         assistantContent += chunk;
         setLastResponse(assistantContent);
@@ -418,16 +524,20 @@ export function VoiceAITutor() {
         setIsLoading(false);
         setChatHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
         setLastResponse(assistantContent);
+        // Mark this language as greeted
+        greetedLanguagesRef.current.add(currentLang);
         if (voiceEnabled && assistantContent) {
           speakText(assistantContent);
         } else {
           setCurrentStatus('idle');
+          if (continuousModeRef.current) restartListening();
         }
       },
       onError: (error) => {
         setIsLoading(false);
         setCurrentStatus('idle');
         toast({ title: "Error", description: error, variant: "destructive" });
+        if (continuousModeRef.current) restartListening();
       },
     });
   };
@@ -437,7 +547,7 @@ export function VoiceAITutor() {
       case 'listening': return currentTranscript || "I'm listening...";
       case 'processing': return "Thinking...";
       case 'speaking': return "Speaking...";
-      default: return "Tap the microphone to ask a question";
+      default: return continuousMode ? "Conversation active - speak anytime" : "Tap the microphone to start";
     }
   };
 
@@ -452,8 +562,29 @@ export function VoiceAITutor() {
 
   return (
     <Card variant="glow" className="flex flex-col h-[600px] items-center justify-center p-8 relative">
-      {/* Voice Toggle */}
-      <div className="absolute top-4 right-4">
+      {/* Top Controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        {/* Voice Gender Toggle */}
+        <div className="flex items-center bg-muted/50 rounded-full p-1 gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setVoiceGender('female')}
+            className={cn("h-8 w-8 rounded-full", voiceGender === 'female' && "bg-primary/20 text-primary")}
+            title="Female voice"
+          >
+            <UserRound className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setVoiceGender('male')}
+            className={cn("h-8 w-8 rounded-full", voiceGender === 'male' && "bg-primary/20 text-primary")}
+            title="Male voice"
+          >
+            <User className="h-4 w-4" />
+          </Button>
+        </div>
         <Button variant="ghost" size="icon" onClick={toggleVoice} className={cn(voiceEnabled && "bg-primary/10")}>
           {voiceEnabled ? <Volume2 className="h-5 w-5 text-primary" /> : <VolumeX className="h-5 w-5 text-muted-foreground" />}
         </Button>
@@ -494,7 +625,7 @@ export function VoiceAITutor() {
 
         {/* Title */}
         <div className="text-center">
-          <h2 className="font-display text-2xl font-bold text-foreground mb-2">Devi - Your AI Friend</h2>
+          <h2 className="font-display text-2xl font-bold text-foreground mb-2">Sara - Your AI Friend</h2>
           <p className="text-muted-foreground flex items-center gap-2 justify-center max-w-xs">
             <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="truncate">{getStatusText()}</span>
@@ -517,17 +648,17 @@ export function VoiceAITutor() {
           )}
 
           <Button
-            variant={isListening ? "destructive" : "hero"}
+            variant={isListening || continuousMode ? "destructive" : "hero"}
             size="lg"
             onClick={toggleListening}
-            disabled={isLoading || isSpeaking}
+            disabled={isLoading}
             className={cn(
               "h-20 w-20 rounded-full transition-all duration-300",
-              isListening && "animate-pulse scale-110",
+              (isListening || continuousMode) && "animate-pulse scale-110",
               "shadow-lg hover:shadow-xl"
             )}
           >
-            {isListening ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+            {isListening || continuousMode ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
           </Button>
         </div>
 
@@ -540,7 +671,10 @@ export function VoiceAITutor() {
 
         <div className="text-center max-w-xs">
           <p className="text-xs text-muted-foreground">
-            Talk to me in any language - Hindi, Telugu, Tamil, English & more! Ask about life, career, coding, or anything on your mind 💛
+            {continuousMode 
+              ? "🟢 Continuous conversation active. Tap mic to stop."
+              : "Talk to me in any language - Hindi, Telugu, Tamil, Urdu, English & more! Say \"talk in Hindi\" to lock a language 💛"
+            }
           </p>
         </div>
       </div>

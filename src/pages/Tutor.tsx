@@ -77,7 +77,7 @@ const Tutor = () => {
                 Powered by AI
               </Badge>
               <h1 className="font-display text-4xl md:text-5xl font-black text-foreground mb-4">
-                Your Personal <span className="text-gradient-primary">AI Tutor</span>
+                Meet <span className="text-gradient-primary">Sara</span> - Your AI Friend
               </h1>
               <p className="text-xl text-muted-foreground">
                 Get instant help with any programming concept using just your voice. 

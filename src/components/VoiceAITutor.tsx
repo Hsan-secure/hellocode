@@ -37,8 +37,8 @@ function buildSystemPrompt(greetedLanguages: Set<string>, lockedLanguage: string
     : `GREETING: You have already greeted in these languages: ${Array.from(greetedLanguages).join(', ')}. Do NOT greet again for these languages. Only greet if the user switches to a NEW language you haven't greeted in yet. For already-greeted languages, just respond naturally without any greeting.`;
 
   const languageLockInstruction = lockedLanguage
-    ? `CRITICAL LANGUAGE LOCK: The user has requested you speak in ${lockedLanguage}. You MUST respond ONLY in ${lockedLanguage} regardless of what language the user speaks. Never switch languages unless the user explicitly asks you to change.`
-    : `LANGUAGE RULE: Respond in the SAME LANGUAGE the user speaks to you. If they speak Hindi, respond in Hindi. If Telugu, respond in Telugu. Match their language exactly.`;
+    ? `CRITICAL LANGUAGE LOCK: The user has requested you speak in ${lockedLanguage}. You MUST respond ONLY in ${lockedLanguage} regardless of what language the user speaks. Never switch languages unless the user explicitly asks you to change to a different language.`
+    : `LANGUAGE RULE: Detect the language the user is speaking and respond in the SAME language. If they speak Hindi, respond in Hindi. If Telugu, respond in Telugu. If English, respond in English. Match their language exactly. Auto-detect from their words.`;
 
   return `You are Sara - a warm, caring, and friendly AI companion. You are like a best friend, elder sister, and mentor all in one. You speak multiple languages fluently.
 
@@ -47,17 +47,17 @@ ${languageLockInstruction}
 ${greetingInstruction}
 
 GREETING STYLES (only when greeting for the FIRST TIME in a language):
-- Hindi: "Assalamu Alaikum!" or "Namaste!" based on context
-- Telugu: "Namaste!" or "Baagunnara?"
-- English: "Hello! How are you doing?"
-- Tamil: "Vanakkam!"
-- Kannada: "Namaskara!"
-- Urdu: "Assalamu Alaikum! Kaise hain aap?"
-- Bengali: "Nomoshkar!"
+- Hindi: "Namaste! Main Sara hoon, aapki dost. Kaise hain aap?"
+- Telugu: "Namaste! Nenu Sara ni, meeru ela unnaru?"
+- English: "Hello! I'm Sara, your friend. How are you doing today?"
+- Tamil: "Vanakkam! Naan Sara, ungal nanbaan. Eppadi irukkeengal?"
+- Kannada: "Namaskara! Naanu Sara, ninna snehithi. Hegiddeeya?"
+- Urdu: "Assalamu Alaikum! Main Sara hoon, aapki dost. Kaise hain aap?"
+- Bengali: "Nomoshkar! Ami Sara, tomar bondhu. Kemon acho?"
 
-URDU SPECIAL RULE: When speaking Urdu, use simple and clear Urdu words. Write in Roman Urdu (Latin script) so it's easy to read and understand. Use everyday conversational Urdu, not heavy literary Urdu. Example: "Aap kaise hain? Main Sara hoon, aapki dost. Batayiye kya chal raha hai?"
+URDU SPECIAL RULE: When speaking Urdu, use simple and clear Roman Urdu (Latin script). Use everyday conversational Urdu. Example: "Aap kaise hain? Main Sara hoon. Batayiye kya chal raha hai?"
 
-CRITICAL RESPONSE RULE: Keep responses SHORT - maximum 2-3 sentences. Be direct, warm, and supportive. No long paragraphs.
+CRITICAL RESPONSE RULE: Keep responses SHORT - maximum 2-3 sentences. Be direct, warm, and supportive. No long paragraphs. Sound natural and human.
 
 Your role is to be a COMPLETE FRIEND AND MENTOR:
 1. Talk about ANYTHING - life, career fears, relationships, motivation, mental health, studies, future worries
@@ -167,7 +167,7 @@ function cleanTextForTTS(text: string): string {
 }
 
 function detectLanguage(text: string): string {
-  if (/[\u0600-\u06FF]/.test(text)) return 'ur-PK'; // Urdu/Arabic script
+  if (/[\u0600-\u06FF]/.test(text)) return 'ur-PK';
   if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
   if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN';
   if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
@@ -178,17 +178,23 @@ function detectLanguage(text: string): string {
   return 'en-IN';
 }
 
-function detectLanguageName(text: string): string {
-  // Check if user is requesting a language switch
+function detectLanguageFromText(text: string): string | null {
   const lowerText = text.toLowerCase();
-  if (/\b(talk|speak|baat|bolo|respond)\b.*\b(hindi|हिंदी)\b/i.test(lowerText) || /\bhindi\s*(me|mein|में)\b/i.test(lowerText)) return 'Hindi';
-  if (/\b(talk|speak|respond)\b.*\btelugu\b/i.test(lowerText) || /\btelugu\s*(lo|లో)\b/i.test(lowerText)) return 'Telugu';
-  if (/\b(talk|speak|respond)\b.*\btamil\b/i.test(lowerText)) return 'Tamil';
-  if (/\b(talk|speak|respond)\b.*\burdu\b/i.test(lowerText)) return 'Urdu';
-  if (/\b(talk|speak|respond)\b.*\benglish\b/i.test(lowerText)) return 'English';
-  if (/\b(talk|speak|respond)\b.*\bkannada\b/i.test(lowerText)) return 'Kannada';
-  if (/\b(talk|speak|respond)\b.*\bbengali\b/i.test(lowerText) || /\b(talk|speak|respond)\b.*\bbangla\b/i.test(lowerText)) return 'Bengali';
   
+  // Detect explicit language switch requests - broad patterns
+  // "hindi mein baat karo", "hindi may baathkar", "talk in hindi", "speak hindi", etc.
+  if (/\b(hindi|हिंदी)\b/i.test(lowerText) && /\b(baat|baath|bol|talk|speak|respond|mein|may|me|में)\b/i.test(lowerText)) return 'Hindi';
+  if (/\b(telugu|తెలుగు)\b/i.test(lowerText) && /\b(lo|la|talk|speak|respond|baath|baat|mein|may|me|లో)\b/i.test(lowerText)) return 'Telugu';
+  if (/\b(tamil|தமிழ்)\b/i.test(lowerText) && /\b(la|talk|speak|respond|baath|baat|mein|may|me)\b/i.test(lowerText)) return 'Tamil';
+  if (/\b(urdu|اردو)\b/i.test(lowerText) && /\b(mein|may|me|talk|speak|respond|baath|baat)\b/i.test(lowerText)) return 'Urdu';
+  if (/\b(english|angrezi)\b/i.test(lowerText) && /\b(mein|may|me|talk|speak|respond|baath|baat)\b/i.test(lowerText)) return 'English';
+  if (/\b(kannada|ಕನ್ನಡ)\b/i.test(lowerText) && /\b(alli|talk|speak|respond|baath|baat|mein|may|me)\b/i.test(lowerText)) return 'Kannada';
+  if (/\b(bengali|bangla|বাংলা)\b/i.test(lowerText) && /\b(te|talk|speak|respond|baath|baat|mein|may|me)\b/i.test(lowerText)) return 'Bengali';
+
+  return null;
+}
+
+function detectUserLanguage(text: string): string {
   // Detect from script
   if (/[\u0600-\u06FF]/.test(text)) return 'Urdu';
   if (/[\u0900-\u097F]/.test(text)) return 'Hindi';
@@ -197,6 +203,11 @@ function detectLanguageName(text: string): string {
   if (/[\u0C80-\u0CFF]/.test(text)) return 'Kannada';
   if (/[\u0D00-\u0D7F]/.test(text)) return 'Malayalam';
   if (/[\u0980-\u09FF]/.test(text)) return 'Bengali';
+  
+  // Detect Hindi/Urdu written in Roman script
+  const romanHindiWords = /\b(kaise|kya|hain|hai|main|mujhe|aap|tum|yeh|woh|kaise|accha|theek|nahi|haan|bahut|kuch|aur|lekin|kyun|kab|kahan|kaun|kitna|bohot|tera|mera|humara|tumhara|bhai|yaar|dost)\b/i;
+  if (romanHindiWords.test(text)) return 'Hindi';
+  
   return 'English';
 }
 
@@ -204,41 +215,44 @@ function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice |
   const voices = window.speechSynthesis.getVoices();
   const langPrefix = lang.split('-')[0];
   
-  // Prefer Google and Microsoft high-quality voices for natural sound
   const highQualityPatterns = /google|microsoft|natural|neural|enhanced|premium/i;
   
-  const femaleNames = /female|woman|mahila|samantha|victoria|karen|moira|zira|susan|aditi|priya|neerja|swara|shreya|kavya|ananya|raveena|heera/i;
-  const maleNames = /male|man|david|mark|james|daniel|george|rishi|hemant|kalpana|madhur/i;
+  const femaleNames = /female|woman|samantha|victoria|karen|moira|zira|susan|aditi|priya|neerja|swara|shreya|kavya|ananya|raveena|heera/i;
+  const maleNames = /male|man|david|mark|james|daniel|george|rishi|hemant|madhur/i;
   const genderPatterns = gender === 'female' ? femaleNames : maleNames;
 
-  // 1. High-quality voice with exact lang + gender (best)
+  // 1. High-quality + exact lang + gender
   const hqExactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name) && highQualityPatterns.test(v.name));
   if (hqExactGender) return hqExactGender;
 
-  // 2. Exact lang + gender
+  // 2. High-quality + exact lang
+  const hqExact = voices.find(v => v.lang === lang && highQualityPatterns.test(v.name));
+  if (hqExact) return hqExact;
+
+  // 3. Exact lang + gender
   const exactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name));
   if (exactGender) return exactGender;
   
-  // 3. Exact lang match
+  // 4. Exact lang
   const exactMatch = voices.find(v => v.lang === lang);
   if (exactMatch) return exactMatch;
 
-  // 4. Indian English preference
-  if (lang === 'en-IN' || lang === 'en-US') {
+  // 5. Indian English preference for en
+  if (langPrefix === 'en') {
     const indianVoice = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name) && genderPatterns.test(v.name));
     if (indianVoice) return indianVoice;
     const anyIndian = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name));
     if (anyIndian) return anyIndian;
   }
   
-  // 5. Prefix + gender
+  // 6. Prefix + gender
   const prefixGender = voices.find(v => v.lang.startsWith(langPrefix) && genderPatterns.test(v.name));
   if (prefixGender) return prefixGender;
   
   const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
   if (prefixMatch) return prefixMatch;
 
-  // 6. Urdu fallback to Hindi
+  // 7. Urdu fallback to Hindi
   if (lang === 'ur-PK') {
     const hindiVoice = voices.find(v => v.lang.startsWith('hi') && genderPatterns.test(v.name));
     if (hindiVoice) return hindiVoice;
@@ -246,7 +260,7 @@ function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice |
     if (anyHindi) return anyHindi;
   }
   
-  // 7. Any English with gender
+  // 8. Any English with gender
   const englishGender = voices.find(v => v.lang.startsWith('en') && genderPatterns.test(v.name));
   if (englishGender) return englishGender;
   
@@ -271,6 +285,7 @@ export function VoiceAITutor() {
   const continuousModeRef = useRef<boolean>(false);
   const greetedLanguagesRef = useRef<Set<string>>(new Set());
   const lockedLanguageRef = useRef<string | null>(null);
+  const handleSendRef = useRef<(text: string) => void>(() => {});
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
 
   useEffect(() => { transcriptRef.current = currentTranscript; }, [currentTranscript]);
@@ -297,7 +312,6 @@ export function VoiceAITutor() {
     checkPermission();
   }, []);
 
-  // Restart listening for continuous mode
   const restartListening = useCallback(() => {
     if (!continuousModeRef.current || !recognitionRef.current) return;
     setTimeout(() => {
@@ -318,8 +332,8 @@ export function VoiceAITutor() {
   // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognitionClass() as CustomSpeechRecognitionInterface;
+      const SpeechRecognitionClass = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+      const recognition = new (SpeechRecognitionClass as new () => CustomSpeechRecognitionInterface)();
       recognitionRef.current = recognition;
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -327,7 +341,7 @@ export function VoiceAITutor() {
 
       let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
-      recognition.onresult = (event) => {
+      recognition.onresult = (event: CustomSpeechRecognitionEvent) => {
         let finalTranscript = '';
         let interimTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
@@ -342,7 +356,7 @@ export function VoiceAITutor() {
         setCurrentTranscript(transcript);
         transcriptRef.current = transcript;
 
-        // Wait 2 seconds after user stops talking, then process
+        // Wait 2 seconds of silence after final result, then process
         if (silenceTimer) clearTimeout(silenceTimer);
         if (finalTranscript.trim()) {
           silenceTimer = setTimeout(() => {
@@ -351,14 +365,13 @@ export function VoiceAITutor() {
         }
       };
 
-      recognition.onerror = (event) => {
+      recognition.onerror = (event: CustomSpeechRecognitionErrorEvent) => {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           setMicPermission('denied');
           setContinuousMode(false);
           toast({ title: "Microphone access denied", description: "Please allow microphone access in your browser settings.", variant: "destructive" });
         } else if (event.error === 'no-speech') {
-          // In continuous mode, restart on no-speech
           if (continuousModeRef.current) {
             restartListening();
             return;
@@ -381,7 +394,7 @@ export function VoiceAITutor() {
         isListeningRef.current = false;
         if (transcript && wasListening) {
           setCurrentStatus('processing');
-          handleSend(transcript);
+          handleSendRef.current(transcript);
           setCurrentTranscript('');
           transcriptRef.current = '';
         } else if (continuousModeRef.current) {
@@ -393,7 +406,7 @@ export function VoiceAITutor() {
     }
 
     return () => { window.speechSynthesis.cancel(); };
-  }, []);
+  }, [restartListening]);
 
   const speakText = useCallback((text: string) => {
     if (!voiceEnabled) {
@@ -425,7 +438,6 @@ export function VoiceAITutor() {
     utterance.onend = () => {
       setIsSpeaking(false);
       setCurrentStatus('idle');
-      // In continuous mode, restart listening after speaking
       if (continuousModeRef.current) {
         restartListening();
       }
@@ -465,7 +477,6 @@ export function VoiceAITutor() {
     }
 
     if (isListening || continuousMode) {
-      // Stop everything
       recognitionRef.current.stop();
       setContinuousMode(false);
       continuousModeRef.current = false;
@@ -503,26 +514,21 @@ export function VoiceAITutor() {
     setVoiceEnabled(!voiceEnabled);
   };
 
-  const handleSend = async (messageText: string) => {
+  const handleSend = useCallback(async (messageText: string) => {
     if (!messageText.trim() || isLoading) return;
     setIsLoading(true);
     setCurrentStatus('processing');
 
-    // Detect language switch request
-    const requestedLang = detectLanguageName(messageText);
-    const lowerText = messageText.toLowerCase();
-    const isLanguageSwitchRequest = /\b(talk|speak|baat|bolo|respond)\b.*\b(hindi|telugu|tamil|urdu|english|kannada|bengali|bangla)\b/i.test(lowerText);
+    // Check for explicit language switch request
+    const switchLang = detectLanguageFromText(messageText);
     
-    if (isLanguageSwitchRequest) {
-      lockedLanguageRef.current = requestedLang;
-      // Reset greeting for new language
-      if (!greetedLanguagesRef.current.has(requestedLang)) {
-        // Will greet in new language
-      }
+    if (switchLang) {
+      // User explicitly asked to switch language
+      lockedLanguageRef.current = switchLang;
     }
 
-    // Track greeted language from response
-    const currentLang = lockedLanguageRef.current || requestedLang;
+    // Determine the current language context
+    const currentLang = lockedLanguageRef.current || detectUserLanguage(messageText);
 
     const newChatHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: messageText }];
     setChatHistory(newChatHistory);
@@ -558,7 +564,12 @@ export function VoiceAITutor() {
         if (continuousModeRef.current) restartListening();
       },
     });
-  };
+  }, [chatHistory, isLoading, voiceEnabled, speakText, restartListening]);
+
+  // Keep ref in sync with latest handleSend
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
   const getStatusText = () => {
     switch (currentStatus) {
@@ -691,7 +702,7 @@ export function VoiceAITutor() {
           <p className="text-xs text-muted-foreground">
             {continuousMode 
               ? "🟢 Continuous conversation active. Tap mic to stop."
-              : "Talk to me in any language - Hindi, Telugu, Tamil, Urdu, English & more! Say \"talk in Hindi\" to lock a language 💛"
+              : "Talk to me in any language - Hindi, Telugu, Tamil, Urdu, English & more! Say \"Hindi mein baat karo\" to lock a language 💛"
             }
           </p>
         </div>

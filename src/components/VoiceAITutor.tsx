@@ -57,9 +57,9 @@ GREETING STYLES (only when greeting for the FIRST TIME in a language):
 
 URDU SPECIAL RULE: When speaking Urdu, use simple and clear Roman Urdu (Latin script). Use everyday conversational Urdu. Example: "Aap kaise hain? Main Sara hoon. Batayiye kya chal raha hai?"
 
-CRITICAL RESPONSE RULE: Keep responses 2-4 sentences. Be direct, warm, and confident. NEVER split words or use abbreviations. Write COMPLETE, flowing sentences that sound natural when spoken aloud. Avoid bullet points, lists, or formatting - just speak naturally like a real person talking. No emojis. Sound human, not robotic.
+CRITICAL RESPONSE RULE: Keep responses 2-3 sentences maximum. Be direct, warm, and confident. Write COMPLETE sentences with smooth natural flow. NO abbreviations, NO emojis, NO bullet points, NO lists, NO markdown formatting, NO special characters. Just pure conversational speech.
 
-VOICE CLARITY RULE: Write responses as if you are SPEAKING, not writing. Use full words, never shortened forms. Connect your thoughts smoothly. Speak with confidence like a knowledgeable Indian girl who knows what she's talking about.
+VOICE CLARITY RULE: You are SPEAKING out loud, not writing text. Every response must sound perfect when read aloud by a text-to-speech engine. Use simple, everyday words. Connect sentences with natural transitions like "and", "so", "well", "you know". NEVER use words that sound awkward when spoken like "e.g.", "i.e.", "etc.", "vs.", or any abbreviation. Speak with warmth and confidence like a real Indian girl chatting with her best friend. Your tone should feel like a phone call, not a chatbot.
 
 Your role is to be a COMPLETE FRIEND AND MENTOR:
 1. Talk about ANYTHING - life, career fears, relationships, motivation, mental health, studies, future worries
@@ -426,54 +426,35 @@ export function VoiceAITutor() {
     const lang = detectLanguage(cleanedText);
     const voice = getBestVoice(lang, voiceGender);
 
-    // Split into sentences for smoother, unbroken speech delivery
-    const sentences = cleanedText
-      .split(/(?<=[.!?।؟])\s+|(?<=\n)/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    // Speak the ENTIRE text as one utterance for natural, unbroken human-like delivery
+    const utterance = new SpeechSynthesisUtterance(cleanedText);
+    
+    // Natural human-like speech parameters
+    utterance.rate = voiceGender === 'female' ? 1.0 : 0.95;
+    utterance.pitch = voiceGender === 'female' ? 1.1 : 0.9;
+    utterance.volume = 1;
 
-    // If splitting fails, speak as one chunk
-    const chunks = sentences.length > 0 ? sentences : [cleanedText];
+    if (voice) utterance.voice = voice;
+    utterance.lang = lang;
 
-    let chunkIndex = 0;
-
-    const speakNextChunk = () => {
-      if (chunkIndex >= chunks.length) {
-        setIsSpeaking(false);
-        setCurrentStatus('idle');
-        if (continuousModeRef.current) restartListening();
-        return;
-      }
-
-      const utterance = new SpeechSynthesisUtterance(chunks[chunkIndex]);
-      utterance.rate = voiceGender === 'female' ? 0.95 : 0.9;
-      utterance.pitch = voiceGender === 'female' ? 1.12 : 0.88;
-      utterance.volume = 1;
-
-      if (voice) utterance.voice = voice;
-      utterance.lang = lang;
-
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        setCurrentStatus('speaking');
-      };
-
-      utterance.onend = () => {
-        chunkIndex++;
-        // Small pause between sentences for natural rhythm
-        setTimeout(speakNextChunk, 80);
-      };
-
-      utterance.onerror = () => {
-        setIsSpeaking(false);
-        setCurrentStatus('idle');
-        if (continuousModeRef.current) restartListening();
-      };
-
-      window.speechSynthesis.speak(utterance);
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setCurrentStatus('speaking');
     };
 
-    speakNextChunk();
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setCurrentStatus('idle');
+      if (continuousModeRef.current) restartListening();
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setCurrentStatus('idle');
+      if (continuousModeRef.current) restartListening();
+    };
+
+    window.speechSynthesis.speak(utterance);
   }, [voiceEnabled, voiceGender, restartListening]);
 
   const stopSpeaking = useCallback(() => {

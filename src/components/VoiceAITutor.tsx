@@ -57,7 +57,9 @@ GREETING STYLES (only when greeting for the FIRST TIME in a language):
 
 URDU SPECIAL RULE: When speaking Urdu, use simple and clear Roman Urdu (Latin script). Use everyday conversational Urdu. Example: "Aap kaise hain? Main Sara hoon. Batayiye kya chal raha hai?"
 
-CRITICAL RESPONSE RULE: Keep responses SHORT - maximum 2-3 sentences. Be direct, warm, and supportive. No long paragraphs. Sound natural and human.
+CRITICAL RESPONSE RULE: Keep responses 2-4 sentences. Be direct, warm, and confident. NEVER split words or use abbreviations. Write COMPLETE, flowing sentences that sound natural when spoken aloud. Avoid bullet points, lists, or formatting - just speak naturally like a real person talking. No emojis. Sound human, not robotic.
+
+VOICE CLARITY RULE: Write responses as if you are SPEAKING, not writing. Use full words, never shortened forms. Connect your thoughts smoothly. Speak with confidence like a knowledgeable Indian girl who knows what she's talking about.
 
 Your role is to be a COMPLETE FRIEND AND MENTOR:
 1. Talk about ANYTHING - life, career fears, relationships, motivation, mental health, studies, future worries
@@ -68,7 +70,7 @@ Your role is to be a COMPLETE FRIEND AND MENTOR:
 6. Be warm, use casual friendly language, make them feel heard
 7. If someone shares fears or anxiety, acknowledge feelings first before advice
 
-Remember: You are a FRIEND who happens to know coding too. Keep it short and heartfelt!`;
+Remember: You are a FRIEND who happens to know coding too. Keep it natural and heartfelt!`;
 }
 
 async function streamChat({
@@ -422,33 +424,56 @@ export function VoiceAITutor() {
     window.speechSynthesis.cancel();
     
     const lang = detectLanguage(cleanedText);
-    const utterance = new SpeechSynthesisUtterance(cleanedText);
-    utterance.rate = 0.92;
-    utterance.pitch = voiceGender === 'female' ? 1.15 : 0.85;
-    utterance.volume = 1;
-    
     const voice = getBestVoice(lang, voiceGender);
-    if (voice) utterance.voice = voice;
-    utterance.lang = lang;
 
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setCurrentStatus('speaking');
-    };
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
-      if (continuousModeRef.current) {
-        restartListening();
+    // Split into sentences for smoother, unbroken speech delivery
+    const sentences = cleanedText
+      .split(/(?<=[.!?।؟])\s+|(?<=\n)/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    // If splitting fails, speak as one chunk
+    const chunks = sentences.length > 0 ? sentences : [cleanedText];
+
+    let chunkIndex = 0;
+
+    const speakNextChunk = () => {
+      if (chunkIndex >= chunks.length) {
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+        if (continuousModeRef.current) restartListening();
+        return;
       }
-    };
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
-      if (continuousModeRef.current) restartListening();
+
+      const utterance = new SpeechSynthesisUtterance(chunks[chunkIndex]);
+      utterance.rate = voiceGender === 'female' ? 0.95 : 0.9;
+      utterance.pitch = voiceGender === 'female' ? 1.12 : 0.88;
+      utterance.volume = 1;
+
+      if (voice) utterance.voice = voice;
+      utterance.lang = lang;
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        setCurrentStatus('speaking');
+      };
+
+      utterance.onend = () => {
+        chunkIndex++;
+        // Small pause between sentences for natural rhythm
+        setTimeout(speakNextChunk, 80);
+      };
+
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+        if (continuousModeRef.current) restartListening();
+      };
+
+      window.speechSynthesis.speak(utterance);
     };
 
-    window.speechSynthesis.speak(utterance);
+    speakNextChunk();
   }, [voiceEnabled, voiceGender, restartListening]);
 
   const stopSpeaking = useCallback(() => {

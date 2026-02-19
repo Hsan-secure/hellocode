@@ -217,56 +217,60 @@ function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice |
   const voices = window.speechSynthesis.getVoices();
   const langPrefix = lang.split('-')[0];
   
-  const highQualityPatterns = /google|microsoft|natural|neural|enhanced|premium/i;
+  // Prioritize the most natural, human-like voices available
+  // Google voices are the highest quality in Chrome, followed by Microsoft Online Natural voices in Edge
+  const isNatural = (v: SpeechSynthesisVoice) => /google|natural|online\s*\(natural\)|neural|wavenet/i.test(v.name);
+  const isHighQuality = (v: SpeechSynthesisVoice) => /google|microsoft|natural|neural|enhanced|premium|online/i.test(v.name);
   
   const femaleNames = /female|woman|samantha|victoria|karen|moira|zira|susan|aditi|priya|neerja|swara|shreya|kavya|ananya|raveena|heera/i;
   const maleNames = /male|man|david|mark|james|daniel|george|rishi|hemant|madhur/i;
   const genderPatterns = gender === 'female' ? femaleNames : maleNames;
 
-  // 1. High-quality + exact lang + gender
-  const hqExactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name) && highQualityPatterns.test(v.name));
-  if (hqExactGender) return hqExactGender;
+  // Score voices: higher = more human-like
+  const scoreVoice = (v: SpeechSynthesisVoice, targetLang: string, targetPrefix: string): number => {
+    let score = 0;
+    if (v.lang === targetLang) score += 100;
+    else if (v.lang.startsWith(targetPrefix)) score += 50;
+    else return 0; // wrong language entirely
+    
+    if (isNatural(v)) score += 40; // Google/Natural voices sound most human
+    else if (isHighQuality(v)) score += 20;
+    
+    if (genderPatterns.test(v.name)) score += 10;
+    if (!v.localService) score += 5; // remote voices are typically higher quality
+    return score;
+  };
 
-  // 2. High-quality + exact lang
-  const hqExact = voices.find(v => v.lang === lang && highQualityPatterns.test(v.name));
-  if (hqExact) return hqExact;
-
-  // 3. Exact lang + gender
-  const exactGender = voices.find(v => v.lang === lang && genderPatterns.test(v.name));
-  if (exactGender) return exactGender;
+  // Score all voices for the target language
+  const scored = voices.map(v => ({ voice: v, score: scoreVoice(v, lang, langPrefix) }))
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score);
   
-  // 4. Exact lang
-  const exactMatch = voices.find(v => v.lang === lang);
-  if (exactMatch) return exactMatch;
+  if (scored.length > 0) return scored[0].voice;
 
-  // 5. Indian English preference for en
+  // Indian English preference for en
   if (langPrefix === 'en') {
-    const indianVoice = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name) && genderPatterns.test(v.name));
-    if (indianVoice) return indianVoice;
-    const anyIndian = voices.find(v => v.lang.includes('en') && /india|aditi|priya|raveena/i.test(v.name));
-    if (anyIndian) return anyIndian;
+    const indianScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'en-IN', 'en') }))
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+    if (indianScored.length > 0) return indianScored[0].voice;
   }
-  
-  // 6. Prefix + gender
-  const prefixGender = voices.find(v => v.lang.startsWith(langPrefix) && genderPatterns.test(v.name));
-  if (prefixGender) return prefixGender;
-  
-  const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
-  if (prefixMatch) return prefixMatch;
 
-  // 7. Urdu fallback to Hindi
+  // Urdu fallback to Hindi
   if (lang === 'ur-PK') {
-    const hindiVoice = voices.find(v => v.lang.startsWith('hi') && genderPatterns.test(v.name));
-    if (hindiVoice) return hindiVoice;
-    const anyHindi = voices.find(v => v.lang.startsWith('hi'));
-    if (anyHindi) return anyHindi;
+    const hindiScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'hi-IN', 'hi') }))
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+    if (hindiScored.length > 0) return hindiScored[0].voice;
   }
   
-  // 8. Any English with gender
-  const englishGender = voices.find(v => v.lang.startsWith('en') && genderPatterns.test(v.name));
-  if (englishGender) return englishGender;
+  // Fallback: best English voice available
+  const enScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'en-US', 'en') }))
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (enScored.length > 0) return enScored[0].voice;
   
-  return voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+  return voices[0] || null;
 }
 
 export function VoiceAITutor() {
@@ -426,16 +430,18 @@ export function VoiceAITutor() {
     const lang = detectLanguage(cleanedText);
     const voice = getBestVoice(lang, voiceGender);
 
-    // Speak the ENTIRE text as one utterance for natural, unbroken human-like delivery
+    // Speak entire text as one utterance for smooth, natural human-like delivery
     const utterance = new SpeechSynthesisUtterance(cleanedText);
     
-    // Natural human-like speech parameters
-    utterance.rate = voiceGender === 'female' ? 1.0 : 0.95;
-    utterance.pitch = voiceGender === 'female' ? 1.1 : 0.9;
-    utterance.volume = 1;
-
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
+    
+    // Fine-tune for the most natural human sound
+    // Google voices already sound great at default rate; slight adjustments for warmth
+    const isGoogleVoice = voice && /google/i.test(voice.name);
+    utterance.rate = isGoogleVoice ? 1.0 : (voiceGender === 'female' ? 0.97 : 0.93);
+    utterance.pitch = isGoogleVoice ? 1.0 : (voiceGender === 'female' ? 1.08 : 0.92);
+    utterance.volume = 1;
 
     utterance.onstart = () => {
       setIsSpeaking(true);

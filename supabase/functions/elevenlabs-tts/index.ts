@@ -5,8 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Sarah - High quality female voice, warm and natural
-const VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+// Sarah - High quality warm female voice
+const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { text } = await req.json();
+    const { text, voiceId } = await req.json();
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
     if (!ELEVENLABS_API_KEY) {
@@ -25,10 +25,11 @@ serve(async (req) => {
       throw new Error("Text is required");
     }
 
-    console.log("ElevenLabs TTS request for text length:", text.length);
+    const selectedVoice = voiceId || DEFAULT_VOICE_ID;
+    console.log("ElevenLabs TTS request, voice:", selectedVoice, "text length:", text.length);
 
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_128`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}?output_format=mp3_44100_128`,
       {
         method: "POST",
         headers: {
@@ -37,12 +38,11 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           text,
-          // Use turbo model for faster response time with multilingual support
-          model_id: "eleven_turbo_v2_5",
+          model_id: "eleven_multilingual_v2",
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0.3,
+            stability: 0.45,
+            similarity_boost: 0.8,
+            style: 0.4,
             use_speaker_boost: true,
             speed: 1.0,
           },

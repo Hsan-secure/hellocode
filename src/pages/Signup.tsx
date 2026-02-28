@@ -55,26 +55,35 @@ const Signup = () => {
 
     setIsLoading(true);
 
-    const { error } = await signUp(email, password, name);
-    
-    if (error) {
+    try {
+      const { error } = await signUp(email, password, name);
+      
+      if (error) {
+        toast({
+          title: "Signup failed",
+          description: error.message === 'User already registered' 
+            ? "This email is already registered. Please log in instead."
+            : error.message,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Account created!",
+        description: "Please check your email to verify your account, then log in.",
+      });
+      navigate('/login');
+    } catch {
       toast({
         title: "Signup failed",
-        description: error.message === 'User already registered' 
-          ? "This email is already registered. Please log in instead."
-          : error.message,
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    toast({
-      title: "Account created!",
-      description: "Welcome to CodeQuest. Let's start learning!",
-    });
-    navigate('/dashboard');
-    setIsLoading(false);
   };
 
   if (loading) {

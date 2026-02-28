@@ -30,6 +30,13 @@ type ChatMessage = { role: 'user' | 'assistant'; content: string };
 type VoiceGender = 'female' | 'male';
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-tutor`;
+const TTS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`;
+
+// ElevenLabs voice IDs
+const VOICE_IDS = {
+  female: 'EXAVITQu4vr4xnSDxMaL', // Sarah - warm, natural female
+  male: 'JBFqnCBsd6RMkjVDRZzb',   // George - clear, confident male
+};
 
 function buildSystemPrompt(greetedLanguages: Set<string>, lockedLanguage: string | null): string {
   const greetingInstruction = greetedLanguages.size === 0
@@ -168,23 +175,9 @@ function cleanTextForTTS(text: string): string {
     .trim();
 }
 
-function detectLanguage(text: string): string {
-  if (/[\u0600-\u06FF]/.test(text)) return 'ur-PK';
-  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
-  if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN';
-  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
-  if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN';
-  if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN';
-  if (/[\u0980-\u09FF]/.test(text)) return 'bn-IN';
-  if (/[\u0A80-\u0AFF]/.test(text)) return 'gu-IN';
-  return 'en-IN';
-}
-
 function detectLanguageFromText(text: string): string | null {
   const lowerText = text.toLowerCase();
   
-  // Detect explicit language switch requests - broad patterns
-  // "hindi mein baat karo", "hindi may baathkar", "talk in hindi", "speak hindi", etc.
   if (/\b(hindi|हिंदी)\b/i.test(lowerText) && /\b(baat|baath|bol|talk|speak|respond|mein|may|me|में)\b/i.test(lowerText)) return 'Hindi';
   if (/\b(telugu|తెలుగు)\b/i.test(lowerText) && /\b(lo|la|talk|speak|respond|baath|baat|mein|may|me|లో)\b/i.test(lowerText)) return 'Telugu';
   if (/\b(tamil|தமிழ்)\b/i.test(lowerText) && /\b(la|talk|speak|respond|baath|baat|mein|may|me)\b/i.test(lowerText)) return 'Tamil';
@@ -197,7 +190,6 @@ function detectLanguageFromText(text: string): string | null {
 }
 
 function detectUserLanguage(text: string): string {
-  // Detect from script
   if (/[\u0600-\u06FF]/.test(text)) return 'Urdu';
   if (/[\u0900-\u097F]/.test(text)) return 'Hindi';
   if (/[\u0C00-\u0C7F]/.test(text)) return 'Telugu';
@@ -206,71 +198,10 @@ function detectUserLanguage(text: string): string {
   if (/[\u0D00-\u0D7F]/.test(text)) return 'Malayalam';
   if (/[\u0980-\u09FF]/.test(text)) return 'Bengali';
   
-  // Detect Hindi/Urdu written in Roman script
   const romanHindiWords = /\b(kaise|kya|hain|hai|main|mujhe|aap|tum|yeh|woh|kaise|accha|theek|nahi|haan|bahut|kuch|aur|lekin|kyun|kab|kahan|kaun|kitna|bohot|tera|mera|humara|tumhara|bhai|yaar|dost)\b/i;
   if (romanHindiWords.test(text)) return 'Hindi';
   
   return 'English';
-}
-
-function getBestVoice(lang: string, gender: VoiceGender): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  const langPrefix = lang.split('-')[0];
-  
-  // Prioritize the most natural, human-like voices available
-  // Google voices are the highest quality in Chrome, followed by Microsoft Online Natural voices in Edge
-  const isNatural = (v: SpeechSynthesisVoice) => /google|natural|online\s*\(natural\)|neural|wavenet/i.test(v.name);
-  const isHighQuality = (v: SpeechSynthesisVoice) => /google|microsoft|natural|neural|enhanced|premium|online/i.test(v.name);
-  
-  const femaleNames = /female|woman|samantha|victoria|karen|moira|zira|susan|aditi|priya|neerja|swara|shreya|kavya|ananya|raveena|heera/i;
-  const maleNames = /male|man|david|mark|james|daniel|george|rishi|hemant|madhur/i;
-  const genderPatterns = gender === 'female' ? femaleNames : maleNames;
-
-  // Score voices: higher = more human-like
-  const scoreVoice = (v: SpeechSynthesisVoice, targetLang: string, targetPrefix: string): number => {
-    let score = 0;
-    if (v.lang === targetLang) score += 100;
-    else if (v.lang.startsWith(targetPrefix)) score += 50;
-    else return 0; // wrong language entirely
-    
-    if (isNatural(v)) score += 40; // Google/Natural voices sound most human
-    else if (isHighQuality(v)) score += 20;
-    
-    if (genderPatterns.test(v.name)) score += 10;
-    if (!v.localService) score += 5; // remote voices are typically higher quality
-    return score;
-  };
-
-  // Score all voices for the target language
-  const scored = voices.map(v => ({ voice: v, score: scoreVoice(v, lang, langPrefix) }))
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score);
-  
-  if (scored.length > 0) return scored[0].voice;
-
-  // Indian English preference for en
-  if (langPrefix === 'en') {
-    const indianScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'en-IN', 'en') }))
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score);
-    if (indianScored.length > 0) return indianScored[0].voice;
-  }
-
-  // Urdu fallback to Hindi
-  if (lang === 'ur-PK') {
-    const hindiScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'hi-IN', 'hi') }))
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score);
-    if (hindiScored.length > 0) return hindiScored[0].voice;
-  }
-  
-  // Fallback: best English voice available
-  const enScored = voices.map(v => ({ voice: v, score: scoreVoice(v, 'en-US', 'en') }))
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score);
-  if (enScored.length > 0) return enScored[0].voice;
-  
-  return voices[0] || null;
 }
 
 export function VoiceAITutor() {
@@ -292,18 +223,12 @@ export function VoiceAITutor() {
   const greetedLanguagesRef = useRef<Set<string>>(new Set());
   const lockedLanguageRef = useRef<string | null>(null);
   const handleSendRef = useRef<(text: string) => void>(() => {});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
 
   useEffect(() => { transcriptRef.current = currentTranscript; }, [currentTranscript]);
   useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
   useEffect(() => { continuousModeRef.current = continuousMode; }, [continuousMode]);
-
-  // Load voices
-  useEffect(() => {
-    const loadVoices = () => { window.speechSynthesis.getVoices(); };
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-  }, []);
 
   useEffect(() => {
     const checkPermission = async () => {
@@ -362,7 +287,6 @@ export function VoiceAITutor() {
         setCurrentTranscript(transcript);
         transcriptRef.current = transcript;
 
-        // Wait 2 seconds of silence after final result, then process
         if (silenceTimer) clearTimeout(silenceTimer);
         if (finalTranscript.trim()) {
           silenceTimer = setTimeout(() => {
@@ -411,10 +335,16 @@ export function VoiceAITutor() {
       };
     }
 
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
   }, [restartListening]);
 
-  const speakText = useCallback((text: string) => {
+  // ElevenLabs TTS - real human voice
+  const speakText = useCallback(async (text: string) => {
     if (!voiceEnabled) {
       if (continuousModeRef.current) restartListening();
       return;
@@ -425,46 +355,67 @@ export function VoiceAITutor() {
       return;
     }
 
-    window.speechSynthesis.cancel();
-    
-    const lang = detectLanguage(cleanedText);
-    const voice = getBestVoice(lang, voiceGender);
+    // Stop any current audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
 
-    // Speak entire text as one utterance for smooth, natural human-like delivery
-    const utterance = new SpeechSynthesisUtterance(cleanedText);
-    
-    if (voice) utterance.voice = voice;
-    utterance.lang = lang;
-    
-    // Fine-tune for the most natural human sound
-    // Google voices already sound great at default rate; slight adjustments for warmth
-    const isGoogleVoice = voice && /google/i.test(voice.name);
-    utterance.rate = isGoogleVoice ? 1.0 : (voiceGender === 'female' ? 0.97 : 0.93);
-    utterance.pitch = isGoogleVoice ? 1.0 : (voiceGender === 'female' ? 1.08 : 0.92);
-    utterance.volume = 1;
+    setIsSpeaking(true);
+    setCurrentStatus('speaking');
 
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setCurrentStatus('speaking');
-    };
+    try {
+      const voiceId = VOICE_IDS[voiceGender];
+      
+      const response = await fetch(TTS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ text: cleanedText, voiceId }),
+      });
 
-    utterance.onend = () => {
+      if (!response.ok) {
+        throw new Error(`TTS request failed: ${response.status}`);
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+        if (continuousModeRef.current) restartListening();
+      };
+
+      audio.onerror = () => {
+        setIsSpeaking(false);
+        setCurrentStatus('idle');
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+        if (continuousModeRef.current) restartListening();
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error("ElevenLabs TTS error:", error);
       setIsSpeaking(false);
       setCurrentStatus('idle');
       if (continuousModeRef.current) restartListening();
-    };
-
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setCurrentStatus('idle');
-      if (continuousModeRef.current) restartListening();
-    };
-
-    window.speechSynthesis.speak(utterance);
+    }
   }, [voiceEnabled, voiceGender, restartListening]);
 
   const stopSpeaking = useCallback(() => {
-    window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     setIsSpeaking(false);
     setCurrentStatus('idle');
   }, []);
@@ -531,15 +482,12 @@ export function VoiceAITutor() {
     setIsLoading(true);
     setCurrentStatus('processing');
 
-    // Check for explicit language switch request
     const switchLang = detectLanguageFromText(messageText);
     
     if (switchLang) {
-      // User explicitly asked to switch language
       lockedLanguageRef.current = switchLang;
     }
 
-    // Determine the current language context
     const currentLang = lockedLanguageRef.current || detectUserLanguage(messageText);
 
     const newChatHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: messageText }];
@@ -560,7 +508,6 @@ export function VoiceAITutor() {
         setIsLoading(false);
         setChatHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
         setLastResponse(assistantContent);
-        // Mark this language as greeted
         greetedLanguagesRef.current.add(currentLang);
         if (voiceEnabled && assistantContent) {
           speakText(assistantContent);
@@ -578,7 +525,6 @@ export function VoiceAITutor() {
     });
   }, [chatHistory, isLoading, voiceEnabled, speakText, restartListening]);
 
-  // Keep ref in sync with latest handleSend
   useEffect(() => {
     handleSendRef.current = handleSend;
   }, [handleSend]);
@@ -605,14 +551,13 @@ export function VoiceAITutor() {
     <Card variant="glow" className="flex flex-col h-[600px] items-center justify-center p-8 relative">
       {/* Top Controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
-        {/* Voice Gender Toggle */}
         <div className="flex items-center bg-muted/50 rounded-full p-1 gap-1">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setVoiceGender('female')}
             className={cn("h-8 w-8 rounded-full", voiceGender === 'female' && "bg-primary/20 text-primary")}
-            title="Female voice"
+            title="Female voice (Sarah)"
           >
             <UserRound className="h-4 w-4" />
           </Button>
@@ -621,7 +566,7 @@ export function VoiceAITutor() {
             size="icon"
             onClick={() => setVoiceGender('male')}
             className={cn("h-8 w-8 rounded-full", voiceGender === 'male' && "bg-primary/20 text-primary")}
-            title="Male voice"
+            title="Male voice (George)"
           >
             <User className="h-4 w-4" />
           </Button>

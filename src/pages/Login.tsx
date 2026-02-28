@@ -28,26 +28,35 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
+    try {
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        toast({
+          title: "Login failed",
+          description: error.message === 'Invalid login credentials' 
+            ? "Invalid email or password. Please try again."
+            : error.message,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Welcome back!",
+        description: "Successfully logged in to your account.",
+      });
+      // Navigation handled by useEffect watching user state
+    } catch {
       toast({
         title: "Login failed",
-        description: error.message === 'Invalid login credentials' 
-          ? "Invalid email or password. Please try again."
-          : error.message,
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    toast({
-      title: "Welcome back!",
-      description: "Successfully logged in to your account.",
-    });
-    navigate('/dashboard');
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {

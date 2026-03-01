@@ -25,35 +25,60 @@ const Login = () => {
     }
   }, [user, loading, navigate]);
 
+  const isTransientNetworkError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /failed to fetch|networkerror|network error/i.test(message);
+  };
+
+  const recoverSession = async () => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/dashboard', { replace: true });
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      const { error } = await signIn(email, password);
+      const { error } = await signIn(email.trim(), password);
       
       if (error) {
+        const isNetworkIssue = isTransientNetworkError(error);
+
+        if (isNetworkIssue) {
+          const recovered = await recoverSession();
+          if (recovered) {
+            return;
+          }
+        }
+
         toast({
-          title: "Login failed",
-          description: error.message === 'Invalid login credentials' 
-            ? "Invalid email or password. Please try again."
+          title: 'Login failed',
+          description: error.message === 'Invalid login credentials'
+            ? 'Invalid email or password. Please try again.'
             : error.message,
-          variant: "destructive",
+          variant: 'destructive',
         });
-        setIsLoading(false);
         return;
       }
 
       toast({
-        title: "Welcome back!",
-        description: "Successfully logged in to your account.",
+        title: 'Welcome back!',
+        description: 'Successfully logged in to your account.',
       });
       // Navigation handled by useEffect watching user state
     } catch {
       toast({
-        title: "Login failed",
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
+        title: 'Login failed',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -62,34 +87,20 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
-
-    const recoverSessionAfterNetworkError = async () => {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          navigate('/dashboard', { replace: true });
-          return true;
-        }
-        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
-      }
-      return false;
-    };
-
     let redirected = false;
 
     try {
       const result = await lovable.auth.signInWithOAuth('google', {
-        redirect_uri: `${window.location.origin}/dashboard`,
+        redirect_uri: window.location.origin,
       });
 
       redirected = Boolean(result?.redirected);
 
       if (result?.error) {
         const message = result.error.message || 'Could not connect to Google. Please try again.';
-        const shouldRecover = /failed to fetch|networkerror|network error/i.test(message);
 
-        if (shouldRecover) {
-          const recovered = await recoverSessionAfterNetworkError();
+        if (isTransientNetworkError(message)) {
+          const recovered = await recoverSession();
           if (recovered) {
             return;
           }
@@ -104,20 +115,21 @@ const Login = () => {
       }
 
       if (!redirected) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          navigate('/dashboard', { replace: true });
+        await recoverSession();
+      }
+    } catch (error) {
+      if (isTransientNetworkError(error)) {
+        const recovered = await recoverSession();
+        if (recovered) {
+          return;
         }
       }
-    } catch {
-      const recovered = await recoverSessionAfterNetworkError();
-      if (!recovered) {
-        toast({
-          title: 'Google sign-in failed',
-          description: 'Network issue while connecting to Google. Please try again.',
-          variant: 'destructive',
-        });
-      }
+
+      toast({
+        title: 'Google sign-in failed',
+        description: 'Network issue while connecting to Google. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       if (!redirected) {
         setIsGoogleLoading(false);

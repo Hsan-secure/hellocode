@@ -56,12 +56,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    return { error: error as Error | null };
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        return { error: error as Error | null };
+      } catch (err) {
+        if (attempt < maxRetries) {
+          // Wait briefly before retrying on network failure
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        return { error: new Error('Network error. Please check your connection and try again.') };
+      }
+    }
+    return { error: new Error('Login failed. Please try again.') };
   };
 
   const signOut = async () => {

@@ -61,14 +61,24 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
-    const { error } = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
-    });
-    
-    if (error) {
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+      });
+      
+      if (result?.error) {
+        toast({
+          title: "Google sign-in failed",
+          description: result.error.message || "Could not connect to Google. Please try again.",
+          variant: "destructive",
+        });
+        setIsGoogleLoading(false);
+      }
+      // If redirected, the page will reload — no need to setIsGoogleLoading(false)
+    } catch {
       toast({
         title: "Google sign-in failed",
-        description: error.message,
+        description: "Network error. Please check your connection and try again.",
         variant: "destructive",
       });
       setIsGoogleLoading(false);

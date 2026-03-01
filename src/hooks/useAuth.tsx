@@ -38,6 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const isTransientNetworkError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /failed to fetch|networkerror|network error/i.test(message);
+  };
+
   const signUp = async (email: string, password: string, username: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
@@ -56,12 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const isTransientNetworkError = (error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      return /failed to fetch|networkerror|network error/i.test(message);
-    };
-
-    const maxRetries = 1;
+    const maxRetries = 2;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -70,15 +70,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
         });
 
-        return { error: error as Error | null };
-      } catch (err) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
+        if (!error) {
           return { error: null };
         }
 
+        if (attempt < maxRetries && isTransientNetworkError(error)) {
+          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+          continue;
+        }
+
+        return { error: error as Error };
+      } catch (err) {
         if (attempt < maxRetries && isTransientNetworkError(err)) {
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
           continue;
         }
 

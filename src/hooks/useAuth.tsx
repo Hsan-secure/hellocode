@@ -56,23 +56,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const maxRetries = 2;
+    const isTransientNetworkError = (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      return /failed to fetch|networkerror|network error/i.test(message);
+    };
+
+    const maxRetries = 1;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
+
         return { error: error as Error | null };
       } catch (err) {
-        if (attempt < maxRetries) {
-          // Wait briefly before retrying on network failure
-          await new Promise(r => setTimeout(r, 800));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          return { error: null };
+        }
+
+        if (attempt < maxRetries && isTransientNetworkError(err)) {
+          await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        return { error: new Error('Network error. Please check your connection and try again.') };
+
+        return { error: new Error('Could not reach the login service. Please try again.') };
       }
     }
+
     return { error: new Error('Login failed. Please try again.') };
   };
 

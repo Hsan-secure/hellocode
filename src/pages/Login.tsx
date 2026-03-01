@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Gamepad2, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
 
 const Login = () => {
@@ -61,27 +62,66 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
+
+    const recoverSessionAfterNetworkError = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          navigate('/dashboard', { replace: true });
+          return true;
+        }
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      }
+      return false;
+    };
+
+    let redirected = false;
+
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      const result = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: `${window.location.origin}/dashboard`,
       });
-      
+
+      redirected = Boolean(result?.redirected);
+
       if (result?.error) {
+        const message = result.error.message || 'Could not connect to Google. Please try again.';
+        const shouldRecover = /failed to fetch|networkerror|network error/i.test(message);
+
+        if (shouldRecover) {
+          const recovered = await recoverSessionAfterNetworkError();
+          if (recovered) {
+            return;
+          }
+        }
+
         toast({
-          title: "Google sign-in failed",
-          description: result.error.message || "Could not connect to Google. Please try again.",
-          variant: "destructive",
+          title: 'Google sign-in failed',
+          description: message,
+          variant: 'destructive',
         });
+        return;
+      }
+
+      if (!redirected) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          navigate('/dashboard', { replace: true });
+        }
+      }
+    } catch {
+      const recovered = await recoverSessionAfterNetworkError();
+      if (!recovered) {
+        toast({
+          title: 'Google sign-in failed',
+          description: 'Network issue while connecting to Google. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      if (!redirected) {
         setIsGoogleLoading(false);
       }
-      // If redirected, the page will reload — no need to setIsGoogleLoading(false)
-    } catch {
-      toast({
-        title: "Google sign-in failed",
-        description: "Network error. Please check your connection and try again.",
-        variant: "destructive",
-      });
-      setIsGoogleLoading(false);
     }
   };
 

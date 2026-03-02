@@ -31,13 +31,13 @@ const Login = () => {
   };
 
   const recoverSession = async () => {
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         navigate('/dashboard', { replace: true });
         return true;
       }
-      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
     }
     return false;
   };

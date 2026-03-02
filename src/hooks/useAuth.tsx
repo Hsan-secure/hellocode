@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -17,47 +17,125 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const ensuredProfileForUserRef = useRef<string | null>(null);
 
   const isTransientNetworkError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     return /failed to fetch|networkerror|network error/i.test(message);
   };
 
-  const signUp = async (email: string, password: string, username: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          username,
-        }
+  const clearLocalSession = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // Ignore local cleanup failures
+    }
+  };
+
+  const ensureProfileExists = async (authUser: User) => {
+    if (ensuredProfileForUserRef.current === authUser.id) return;
+
+    const username =
+      (authUser.user_metadata?.username as string | undefined)?.trim() ||
+      authUser.email?.split('@')[0] ||
+      'player';
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', authUser.id)
+      .maybeSingle();
+
+    if (error) return;
+
+    if (!data) {
+      const { error: insertError } = await supabase.from('profiles').insert({
+        user_id: authUser.id,
+        username,
+      });
+
+      if (insertError && !insertError.message.toLowerCase().includes('duplicate')) {
+        return;
+      }
+    }
+
+    ensuredProfileForUserRef.current = authUser.id;
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setLoading(false);
+
+      if (nextSession?.user) {
+        void ensureProfileExists(nextSession.user);
+      } else {
+        ensuredProfileForUserRef.current = null;
       }
     });
-    
-    return { error: error as Error | null };
+
+    // THEN check for existing session
+    const initializeSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error && isTransientNetworkError(error)) {
+          await clearLocalSession();
+          if (isMounted) {
+            setSession(null);
+            setUser(null);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          setSession(data.session);
+          setUser(data.session?.user ?? null);
+        }
+
+        if (data.session?.user) {
+          void ensureProfileExists(data.session.user);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void initializeSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const signUp = async (email: string, password: string, username: string) => {
+    const redirectUrl = `${window.location.origin}/`;
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            username: username.trim(),
+          },
+        },
+      });
+
+      return { error: error as Error | null };
+    } catch {
+      return { error: new Error('Could not reach the signup service. Please try again.') };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
@@ -66,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const { error } = await supabase.auth.signInWithPassword({
-          email,
+          email: email.trim(),
           password,
         });
 
@@ -75,14 +153,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (attempt < maxRetries && isTransientNetworkError(error)) {
-          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+          const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+          if (recoveredSession) {
+            return { error: null };
+          }
+
+          if (attempt === 0) {
+            await clearLocalSession();
+          }
+
+          await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
           continue;
         }
 
         return { error: error as Error };
       } catch (err) {
         if (attempt < maxRetries && isTransientNetworkError(err)) {
-          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+          const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+          if (recoveredSession) {
+            return { error: null };
+          }
+
+          if (attempt === 0) {
+            await clearLocalSession();
+          }
+
+          await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
           continue;
         }
 
@@ -94,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    ensuredProfileForUserRef.current = null;
     await supabase.auth.signOut();
   };
 

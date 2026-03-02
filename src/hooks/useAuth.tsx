@@ -21,7 +21,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isTransientNetworkError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    return /failed to fetch|networkerror|network error/i.test(message);
+    return /failed to fetch|networkerror|network error|timeout|timed out|abort/i.test(message);
+  };
+
+  const withTimeout = async <T,>(
+    operation: Promise<T>,
+    timeoutMs: number,
+    message: string
+  ): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId!);
+    }
   };
 
   const clearLocalSession = async () => {
@@ -83,10 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // THEN check for existing session
     const initializeSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          6000,
+          'Authentication check timed out. Please try again.'
+        );
 
-        if (error && isTransientNetworkError(error)) {
-          await clearLocalSession();
+        if (error) {
+          if (isTransientNetworkError(error)) {
+            await clearLocalSession();
+          }
+
           if (isMounted) {
             setSession(null);
             setUser(null);
@@ -101,6 +127,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (data.session?.user) {
           void ensureProfileExists(data.session.user);
+        }
+      } catch {
+        if (isMounted) {
+          setSession(null);
+          setUser(null);
         }
       } finally {
         if (isMounted) {
@@ -121,16 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const redirectUrl = `${window.location.origin}/`;
 
     try {
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            username: username.trim(),
+      const { error } = await withTimeout(
+        supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: redirectUrl,
+            data: {
+              username: username.trim(),
+            },
           },
-        },
-      });
+        }),
+        10000,
+        'Signup request timed out. Please try again.'
+      );
 
       return { error: error as Error | null };
     } catch {
@@ -143,17 +178,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        const { error } = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          }),
+          8000,
+          'Login request timed out. Please try again.'
+        );
 
         if (!error) {
           return { error: null };
         }
 
         if (attempt < maxRetries && isTransientNetworkError(error)) {
-          const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+          const { data: { session: recoveredSession } } = await withTimeout(
+            supabase.auth.getSession(),
+            4000,
+            'Session recovery timed out.'
+          );
           if (recoveredSession) {
             return { error: null };
           }
@@ -169,7 +212,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error as Error };
       } catch (err) {
         if (attempt < maxRetries && isTransientNetworkError(err)) {
-          const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+          const { data: { session: recoveredSession } } = await withTimeout(
+            supabase.auth.getSession(),
+            4000,
+            'Session recovery timed out.'
+          );
           if (recoveredSession) {
             return { error: null };
           }

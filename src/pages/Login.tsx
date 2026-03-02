@@ -27,16 +27,41 @@ const Login = () => {
 
   const isTransientNetworkError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    return /failed to fetch|networkerror|network error/i.test(message);
+    return /failed to fetch|networkerror|network error|timeout|timed out|abort/i.test(message);
+  };
+
+  const withTimeout = async <T,>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId!);
+    }
   };
 
   const recoverSession = async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/dashboard', { replace: true });
-        return true;
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          4000,
+          'Session recovery timed out.'
+        );
+
+        if (session) {
+          navigate('/dashboard', { replace: true });
+          return true;
+        }
+      } catch {
+        // Continue retrying
       }
+
       await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
     }
     return false;
@@ -90,9 +115,13 @@ const Login = () => {
     let redirected = false;
 
     try {
-      const result = await lovable.auth.signInWithOAuth('google', {
-        redirect_uri: window.location.origin,
-      });
+      const result = await withTimeout(
+        lovable.auth.signInWithOAuth('google', {
+          redirect_uri: window.location.origin,
+        }),
+        10000,
+        'Google sign-in request timed out. Please try again.'
+      );
 
       redirected = Boolean(result?.redirected);
 

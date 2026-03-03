@@ -56,15 +56,20 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const { error } = await signUp(email, password, name);
+      const { error } = await signUp(email.trim(), password, name.trim());
       
       if (error) {
+        const normalized = error.message.toLowerCase();
+        const description = normalized.includes('user already registered')
+          ? 'This email is already registered. Please log in instead.'
+          : normalized.includes('failed to fetch') || normalized.includes('network')
+            ? 'Network issue detected. Please try again in a few seconds.'
+            : error.message;
+
         toast({
-          title: "Signup failed",
-          description: error.message === 'User already registered' 
-            ? "This email is already registered. Please log in instead."
-            : error.message,
-          variant: "destructive",
+          title: 'Signup failed',
+          description,
+          variant: 'destructive',
         });
         setIsLoading(false);
         return;

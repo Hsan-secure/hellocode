@@ -13,11 +13,34 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const isNetworkIssue = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|networkerror|network error|timeout|timed out|abort/i.test(message);
+};
+
+const getAuthStorageKey = () => {
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  return projectId ? `sb-${projectId}-auth-token` : null;
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const ensuredProfileForUserRef = useRef<string | null>(null);
+
+  const clearLocalSession = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore
+    }
+
+    const storageKey = getAuthStorageKey();
+    if (storageKey) {
+      localStorage.removeItem(storageKey);
+    }
+  };
 
   const ensureProfileExists = async (authUser: User) => {
     if (ensuredProfileForUserRef.current === authUser.id) return;
@@ -49,14 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       ensuredProfileForUserRef.current = authUser.id;
     } catch {
-      // Profile creation is non-critical
+      // non-blocking
     }
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
 
@@ -65,29 +87,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
 
       if (nextSession?.user) {
-        // Use setTimeout to avoid Supabase lock contention
         setTimeout(() => {
           if (isMounted) void ensureProfileExists(nextSession.user);
-        }, 100);
+        }, 50);
       } else {
         ensuredProfileForUserRef.current = null;
       }
     });
 
-    // THEN check for existing session
     const initializeSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
 
         if (error) {
-          // If session retrieval fails (stale token, network), clear it
-          console.warn('Session init failed, clearing local session:', error.message);
-          try {
-            await supabase.auth.signOut({ scope: 'local' });
-          } catch {
-            // Clear localStorage directly as fallback
-            const storageKey = `sb-btxgpuyflevtxatpxisc-auth-token`;
-            localStorage.removeItem(storageKey);
+          if (isNetworkIssue(error)) {
+            await clearLocalSession();
           }
 
           if (isMounted) {
@@ -105,10 +119,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (data.session?.user) {
-          void ensureProfileExists(data.session.user);
+          setTimeout(() => {
+            if (isMounted) void ensureProfileExists(data.session.user);
+          }, 50);
         }
       } catch {
-        // On any failure, ensure we stop loading
+        await clearLocalSession();
+
         if (isMounted) {
           setSession(null);
           setUser(null);
@@ -137,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       return { error: error as Error | null };
-    } catch (err) {
+    } catch {
       return { error: new Error('Could not reach the signup service. Please try again.') };
     }
   };
@@ -149,12 +166,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      if (error) {
-        return { error: error as Error };
+      if (!error) {
+        return { error: null };
       }
 
-      return { error: null };
+      if (isNetworkIssue(error)) {
+        await clearLocalSession();
+      }
+
+      return { error: error as Error };
     } catch {
+      await clearLocalSession();
       return { error: new Error('Could not reach the login service. Please try again.') };
     }
   };

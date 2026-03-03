@@ -19,38 +19,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const ensuredProfileForUserRef = useRef<string | null>(null);
 
-  const isTransientNetworkError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return /failed to fetch|networkerror|network error|timeout|timed out|abort/i.test(message);
-  };
-
-  const withTimeout = async <T,>(
-    operation: Promise<T>,
-    timeoutMs: number,
-    message: string
-  ): Promise<T> => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    try {
-      return await Promise.race([
-        operation,
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timeoutId!);
-    }
-  };
-
-  const clearLocalSession = async () => {
-    try {
-      await supabase.auth.signOut({ scope: 'local' });
-    } catch {
-      // Ignore local cleanup failures
-    }
-  };
-
   const ensureProfileExists = async (authUser: User) => {
     if (ensuredProfileForUserRef.current === authUser.id) return;
 
@@ -59,26 +27,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authUser.email?.split('@')[0] ||
       'player';
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('user_id', authUser.id)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', authUser.id)
+        .maybeSingle();
 
-    if (error) return;
+      if (error) return;
 
-    if (!data) {
-      const { error: insertError } = await supabase.from('profiles').insert({
-        user_id: authUser.id,
-        username,
-      });
+      if (!data) {
+        const { error: insertError } = await supabase.from('profiles').insert({
+          user_id: authUser.id,
+          username,
+        });
 
-      if (insertError && !insertError.message.toLowerCase().includes('duplicate')) {
-        return;
+        if (insertError && !insertError.message.toLowerCase().includes('duplicate')) {
+          return;
+        }
       }
-    }
 
-    ensuredProfileForUserRef.current = authUser.id;
+      ensuredProfileForUserRef.current = authUser.id;
+    } catch {
+      // Profile creation is non-critical
+    }
   };
 
   useEffect(() => {
@@ -93,7 +65,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
 
       if (nextSession?.user) {
-        void ensureProfileExists(nextSession.user);
+        // Use setTimeout to avoid Supabase lock contention
+        setTimeout(() => {
+          if (isMounted) void ensureProfileExists(nextSession.user);
+        }, 100);
       } else {
         ensuredProfileForUserRef.current = null;
       }
@@ -102,20 +77,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // THEN check for existing session
     const initializeSession = async () => {
       try {
-        const { data, error } = await withTimeout(
-          supabase.auth.getSession(),
-          6000,
-          'Authentication check timed out. Please try again.'
-        );
+        const { data, error } = await supabase.auth.getSession();
 
         if (error) {
-          if (isTransientNetworkError(error)) {
-            await clearLocalSession();
+          // If session retrieval fails (stale token, network), clear it
+          console.warn('Session init failed, clearing local session:', error.message);
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {
+            // Clear localStorage directly as fallback
+            const storageKey = `sb-btxgpuyflevtxatpxisc-auth-token`;
+            localStorage.removeItem(storageKey);
           }
 
           if (isMounted) {
             setSession(null);
             setUser(null);
+            setLoading(false);
           }
           return;
         }
@@ -123,18 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setSession(data.session);
           setUser(data.session?.user ?? null);
+          setLoading(false);
         }
 
         if (data.session?.user) {
           void ensureProfileExists(data.session.user);
         }
       } catch {
+        // On any failure, ensure we stop loading
         if (isMounted) {
           setSession(null);
           setUser(null);
-        }
-      } finally {
-        if (isMounted) {
           setLoading(false);
         }
       }
@@ -149,91 +126,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, username: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-
     try {
-      const { error } = await withTimeout(
-        supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            emailRedirectTo: redirectUrl,
-            data: {
-              username: username.trim(),
-            },
-          },
-        }),
-        10000,
-        'Signup request timed out. Please try again.'
-      );
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: { username: username.trim() },
+        },
+      });
 
       return { error: error as Error | null };
-    } catch {
+    } catch (err) {
       return { error: new Error('Could not reach the signup service. Please try again.') };
     }
   };
 
   const signIn = async (email: string, password: string) => {
-    const maxRetries = 2;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const { error } = await withTimeout(
-          supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          }),
-          8000,
-          'Login request timed out. Please try again.'
-        );
-
-        if (!error) {
-          return { error: null };
-        }
-
-        if (attempt < maxRetries && isTransientNetworkError(error)) {
-          const { data: { session: recoveredSession } } = await withTimeout(
-            supabase.auth.getSession(),
-            4000,
-            'Session recovery timed out.'
-          );
-          if (recoveredSession) {
-            return { error: null };
-          }
-
-          if (attempt === 0) {
-            await clearLocalSession();
-          }
-
-          await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
-          continue;
-        }
-
+      if (error) {
         return { error: error as Error };
-      } catch (err) {
-        if (attempt < maxRetries && isTransientNetworkError(err)) {
-          const { data: { session: recoveredSession } } = await withTimeout(
-            supabase.auth.getSession(),
-            4000,
-            'Session recovery timed out.'
-          );
-          if (recoveredSession) {
-            return { error: null };
-          }
-
-          if (attempt === 0) {
-            await clearLocalSession();
-          }
-
-          await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
-          continue;
-        }
-
-        return { error: new Error('Could not reach the login service. Please try again.') };
       }
-    }
 
-    return { error: new Error('Login failed. Please try again.') };
+      return { error: null };
+    } catch {
+      return { error: new Error('Could not reach the login service. Please try again.') };
+    }
   };
 
   const signOut = async () => {

@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Gamepad2, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
 
 const Login = () => {
@@ -18,54 +17,11 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  // Redirect if already logged in
   useEffect(() => {
     if (user && !loading) {
       navigate('/dashboard');
     }
   }, [user, loading, navigate]);
-
-  const isTransientNetworkError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return /failed to fetch|networkerror|network error|timeout|timed out|abort/i.test(message);
-  };
-
-  const withTimeout = async <T,>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    try {
-      return await Promise.race([
-        operation,
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timeoutId!);
-    }
-  };
-
-  const recoverSession = async () => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { data: { session } } = await withTimeout(
-          supabase.auth.getSession(),
-          4000,
-          'Session recovery timed out.'
-        );
-
-        if (session) {
-          navigate('/dashboard', { replace: true });
-          return true;
-        }
-      } catch {
-        // Continue retrying
-      }
-
-      await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
-    }
-    return false;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,17 +29,8 @@ const Login = () => {
 
     try {
       const { error } = await signIn(email.trim(), password);
-      
+
       if (error) {
-        const isNetworkIssue = isTransientNetworkError(error);
-
-        if (isNetworkIssue) {
-          const recovered = await recoverSession();
-          if (recovered) {
-            return;
-          }
-        }
-
         toast({
           title: 'Login failed',
           description: error.message === 'Invalid login credentials'
@@ -91,18 +38,16 @@ const Login = () => {
             : error.message,
           variant: 'destructive',
         });
-        return;
+      } else {
+        toast({
+          title: 'Welcome back!',
+          description: 'Successfully logged in to your account.',
+        });
       }
-
-      toast({
-        title: 'Welcome back!',
-        description: 'Successfully logged in to your account.',
-      });
-      // Navigation handled by useEffect watching user state
     } catch {
       toast({
         title: 'Login failed',
-        description: 'Something went wrong. Please try again.',
+        description: 'Could not reach the login service. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -112,57 +57,33 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
-    let redirected = false;
 
     try {
-      const result = await withTimeout(
-        lovable.auth.signInWithOAuth('google', {
-          redirect_uri: window.location.origin,
-        }),
-        10000,
-        'Google sign-in request timed out. Please try again.'
-      );
-
-      redirected = Boolean(result?.redirected);
+      const result = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: window.location.origin,
+      });
 
       if (result?.error) {
-        const message = result.error.message || 'Could not connect to Google. Please try again.';
-
-        if (isTransientNetworkError(message)) {
-          const recovered = await recoverSession();
-          if (recovered) {
-            return;
-          }
-        }
-
         toast({
           title: 'Google sign-in failed',
-          description: message,
+          description: result.error.message || 'Could not connect to Google. Please try again.',
           variant: 'destructive',
         });
+        setIsGoogleLoading(false);
         return;
       }
 
-      if (!redirected) {
-        await recoverSession();
-      }
-    } catch (error) {
-      if (isTransientNetworkError(error)) {
-        const recovered = await recoverSession();
-        if (recovered) {
-          return;
-        }
-      }
-
-      toast({
-        title: 'Google sign-in failed',
-        description: 'Network issue while connecting to Google. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      if (!redirected) {
+      // If redirected, don't reset loading (page is navigating away)
+      if (!result?.redirected) {
         setIsGoogleLoading(false);
       }
+    } catch {
+      toast({
+        title: 'Google sign-in failed',
+        description: 'Could not connect to Google. Please try again.',
+        variant: 'destructive',
+      });
+      setIsGoogleLoading(false);
     }
   };
 

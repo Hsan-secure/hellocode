@@ -43,7 +43,7 @@ interface GameSession {
 }
 
 export function useUserProfile() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   
   return useQuery({
     queryKey: ['profile', user?.id],
@@ -59,12 +59,12 @@ export function useUserProfile() {
       if (error) throw error;
       return data as Profile | null;
     },
-    enabled: !!user,
+    enabled: !loading && !!user,
   });
 }
 
 export function useUserLevelProgress() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   
   return useQuery({
     queryKey: ['levelProgress', user?.id],
@@ -79,12 +79,12 @@ export function useUserLevelProgress() {
       if (error) throw error;
       return data as LevelProgress[];
     },
-    enabled: !!user,
+    enabled: !loading && !!user,
   });
 }
 
 export function useUserBadges() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   
   return useQuery({
     queryKey: ['userBadges', user?.id],
@@ -99,12 +99,12 @@ export function useUserBadges() {
       if (error) throw error;
       return data as UserBadge[];
     },
-    enabled: !!user,
+    enabled: !loading && !!user,
   });
 }
 
 export function useGameSessions() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   
   return useQuery({
     queryKey: ['gameSessions', user?.id],
@@ -121,7 +121,7 @@ export function useGameSessions() {
       if (error) throw error;
       return data as GameSession[];
     },
-    enabled: !!user,
+    enabled: !loading && !!user,
   });
 }
 

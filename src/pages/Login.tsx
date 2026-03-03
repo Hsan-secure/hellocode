@@ -23,6 +23,24 @@ const Login = () => {
     }
   }, [user, loading, navigate]);
 
+  const getFriendlyAuthError = (errorMessage: string) => {
+    const normalized = errorMessage.toLowerCase();
+
+    if (normalized.includes('invalid login credentials')) {
+      return 'Invalid email or password. Please try again.';
+    }
+
+    if (normalized.includes('email not confirmed')) {
+      return 'Please verify your email first, then log in.';
+    }
+
+    if (normalized.includes('failed to fetch') || normalized.includes('network')) {
+      return 'Network issue detected. Please try again in a few seconds.';
+    }
+
+    return errorMessage;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -33,9 +51,7 @@ const Login = () => {
       if (error) {
         toast({
           title: 'Login failed',
-          description: error.message === 'Invalid login credentials'
-            ? 'Invalid email or password. Please try again.'
-            : error.message,
+          description: getFriendlyAuthError(error.message),
           variant: 'destructive',
         });
       } else {
@@ -66,16 +82,9 @@ const Login = () => {
       if (result?.error) {
         toast({
           title: 'Google sign-in failed',
-          description: result.error.message || 'Could not connect to Google. Please try again.',
+          description: getFriendlyAuthError(result.error.message || 'Could not connect to Google. Please try again.'),
           variant: 'destructive',
         });
-        setIsGoogleLoading(false);
-        return;
-      }
-
-      // If redirected, don't reset loading (page is navigating away)
-      if (!result?.redirected) {
-        setIsGoogleLoading(false);
       }
     } catch {
       toast({
@@ -83,6 +92,7 @@ const Login = () => {
         description: 'Could not connect to Google. Please try again.',
         variant: 'destructive',
       });
+    } finally {
       setIsGoogleLoading(false);
     }
   };

@@ -12,24 +12,26 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GROK_API_KEY = Deno.env.get("GROK_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GROK_API_KEY) {
+      throw new Error("GROK_API_KEY is not configured");
     }
 
     console.log("AI Tutor request received with", messages.length, "messages");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GROK_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "grok-3-mini-fast",
         messages,
         stream: true,
+        temperature: 0.7,
+        max_tokens: 512,
       }),
     });
 
@@ -47,14 +49,14 @@ serve(async (req) => {
         });
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
+      console.error("Grok API error:", response.status, errorText);
+      return new Response(JSON.stringify({ error: "AI service error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("AI Tutor response streaming started");
+    console.log("AI Tutor response streaming started (Grok)");
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },

@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Sarah - High quality warm female voice
+// Sarah - Premium warm female voice
 const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 
 serve(async (req) => {
@@ -40,11 +40,11 @@ serve(async (req) => {
           text,
           model_id: "eleven_multilingual_v2",
           voice_settings: {
-            stability: 0.45,
-            similarity_boost: 0.8,
-            style: 0.4,
+            stability: 0.55,
+            similarity_boost: 0.85,
+            style: 0.35,
             use_speaker_boost: true,
-            speed: 1.0,
+            speed: 0.95,
           },
         }),
       }

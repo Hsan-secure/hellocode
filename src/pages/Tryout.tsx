@@ -30,7 +30,7 @@ const LANGUAGE_CONFIG: Record<SupportedLanguage, { name: string; icon: string; d
 </html>`,
   },
   css: {
-    name: 'HTML + CSS',
+    name: 'HTML + CSS + JS',
     icon: '🎨',
     defaultCode: `<!DOCTYPE html>
 <html>
@@ -54,13 +54,36 @@ const LANGUAGE_CONFIG: Record<SupportedLanguage, { name: string; icon: string; d
   }
   h1 { color: #333; }
   p { color: #666; }
+  button {
+    margin-top: 1rem;
+    padding: 0.5rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    background: #667eea;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  button:hover { transform: scale(1.05); }
+  #counter { font-size: 2rem; color: #333; margin: 1rem 0; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>Styled Card</h1>
-    <p>Edit the CSS above to style this!</p>
+    <h1>Interactive Card</h1>
+    <p>Click the button to count!</p>
+    <div id="counter">0</div>
+    <button onclick="increment()">Click Me</button>
   </div>
+
+  <script>
+    let count = 0;
+    function increment() {
+      count++;
+      document.getElementById('counter').textContent = count;
+    }
+  </script>
 </body>
 </html>`,
   },
